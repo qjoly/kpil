@@ -2,6 +2,8 @@
 
 A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secrets excluded), generates a short-lived kubeconfig, and drops you directly into the **GitHub Copilot CLI** inside an isolated container — then cleans everything up when you exit.
 
+![demo](demo.gif)
+
 ---
 
 ## How it works

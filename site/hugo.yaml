@@ -1,0 +1,39 @@
+baseURL: https://qjoly.github.io/kpil/
+languageCode: en-us
+title: kpil
+theme: hextra
+
+enableRobotsTXT: true
+enableGitInfo: true
+
+markup:
+  highlight:
+    noClasses: false
+  goldmark:
+    renderer:
+      unsafe: true
+
+ignoreLogs:
+  - warning-goldmark-raw-html
+  - warning-deprecated
+
+params:
+  description: Provision a scoped read-only Kubernetes kubeconfig and launch GitHub Copilot CLI in an isolated container.
+  navbar:
+    displayTitle: true
+    displayLogo: true
+  footer:
+    displayCopyright: true
+    displayPoweredBy: false
+  editURL:
+    enable: true
+    base: https://github.com/qjoly/kpil/edit/main/site/content
+
+menu:
+  main:
+  - name: GitHub
+    url: https://github.com/qjoly/kpil
+    weight: 1
+    params:
+      type: icon
+      icon: github

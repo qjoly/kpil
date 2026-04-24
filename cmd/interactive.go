@@ -14,7 +14,7 @@ func promptInteractive(c *Config) error {
 	s := bufio.NewScanner(os.Stdin)
 
 	fmt.Fprintln(os.Stderr, "\n=== Interactive Setup ===")
-	fmt.Fprintln(os.Stderr, "Press Enter to accept the value shown in [brackets].\n")
+	fmt.Fprintln(os.Stderr, "Press Enter to accept the value shown in [brackets].")
 
 	// ---- Image override ------------------------------------------------
 	fmt.Fprintf(os.Stderr, "Image [%s]: ", c.Image)

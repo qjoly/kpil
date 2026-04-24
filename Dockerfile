@@ -134,7 +134,9 @@ RUN --mount=type=bind,source=.,target=/build-ctx \
 #                or use `kpil --build` which forwards GH_TOKEN for you.
 # ---------------------------------------------------------------------------
 RUN --mount=type=secret,id=gh_token \
-    if GH_TOKEN=$(cat /run/secrets/gh_token 2>/dev/null) && [ -n "$GH_TOKEN" ]; then \
+    if gh copilot --version > /dev/null 2>&1; then \
+      echo "gh copilot is already available as a built-in — skipping extension install."; \
+    elif GH_TOKEN=$(cat /run/secrets/gh_token 2>/dev/null) && [ -n "$GH_TOKEN" ]; then \
       echo "Installing gh copilot extension (build time)…"; \
       gh extension install github/gh-copilot; \
     else \

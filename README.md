@@ -8,28 +8,24 @@ A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secret
 
 ## How it works
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      your machine                           │
-│                                                             │
-│  kpil                                   │
-│    │                                                        │
-│    ├─ 1. Creates ServiceAccount, ClusterRole (no secrets),  │
-│    │       ClusterRoleBinding  ──────────────► cluster      │
-│    │                                                        │
-│    ├─ 2. Issues a 24 h ServiceAccount token  ◄─── cluster   │
-│    │       Writes  ./ro-kubeconfig  (mode 0600)             │
-│    │                                                        │
-│    ├─ 3. Pulls ghcr.io/qjoly/kpil       │
-│    │                                                        │
-│    ├─ 4. docker / podman run  ──► container                 │
-│    │         -v ro-kubeconfig:/root/.kube/config:ro         │
-│    │         -e GH_TOKEN                                    │
-│    │         → gh copilot suggest  (interactive)            │
-│    │                                                        │
-│    └─ 5. On exit: deletes SA, ClusterRole,                  │
-│              ClusterRoleBinding, ro-kubeconfig              │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant K as kpil
+    participant C as Kubernetes cluster
+    participant D as Container (Docker/Podman)
+
+    U->>K: kpil
+    K->>C: 1. Create ServiceAccount, ClusterRole (no secrets), ClusterRoleBinding
+    K->>C: 2. Request 24h ServiceAccount token
+    C-->>K: Token issued
+    K->>K: Write ./ro-kubeconfig (mode 0600)
+    K->>D: 3. Pull ghcr.io/qjoly/kpil
+    K->>D: 4. docker run -v ro-kubeconfig:/root/.kube/config:ro -e GH_TOKEN
+    D-->>U: gh copilot (interactive session)
+    U->>D: exit
+    K->>C: 5. Delete ClusterRoleBinding, ClusterRole, ServiceAccount
+    K->>K: Delete ./ro-kubeconfig
 ```
 
 ### RBAC design

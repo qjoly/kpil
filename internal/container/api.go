@@ -193,6 +193,10 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 	}
 
 	// ---- SIGWINCH forwarder goroutine -----------------------------------
+	// resizeCtx has its own cancel so the goroutine exits as soon as the
+	// container stops, even when the parent ctx is not cancelled (i.e. the
+	// container exited naturally rather than via Ctrl-C).
+	resizeCtx, resizeCancel := context.WithCancel(ctx)
 	winchCh := make(chan os.Signal, 1)
 	signal.Notify(winchCh, syscall.SIGWINCH)
 	resizeDone := make(chan struct{})
@@ -200,11 +204,11 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 		defer close(resizeDone)
 		for {
 			select {
-			case <-ctx.Done():
+			case <-resizeCtx.Done():
 				return
 			case <-winchCh:
 				if w, h, err := term.GetSize(inFD); err == nil {
-					_ = a.cli.ContainerResize(ctx, id,
+					_ = a.cli.ContainerResize(resizeCtx, id,
 						container.ResizeOptions{Width: uint(w), Height: uint(h)})
 				}
 			}
@@ -241,11 +245,11 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 		_ = a.cli.ContainerStop(context.Background(), id, container.StopOptions{})
 	}
 
-	// Close the hijacked connection so the io.Copy goroutines get EOF and
-	// return. Without this, <-copyDone would block forever because the
-	// Reader's underlying TCP connection stays open even after the container
-	// process exits.
+	// Close the hijacked connection so io.Copy(os.Stdout, attach.Reader)
+	// gets EOF and copyDone closes. Cancel resizeCtx so the SIGWINCH
+	// goroutine exits even when the parent ctx is still live (natural exit).
 	attach.Close()
+	resizeCancel()
 
 	signal.Stop(winchCh)
 	<-copyDone

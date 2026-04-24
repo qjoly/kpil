@@ -182,7 +182,7 @@ func VerifyImage(image string) error {
 
 	var stderr bytes.Buffer
 	cmd := exec.Command("cosign", "verify",
-		"--certificate-identity-regexp", "https://github.com/qjoly/copilot-kubectl-enforced/",
+		"--certificate-identity-regexp", "https://github.com/qjoly/kpil/",
 		"--certificate-oidc-issuer", "https://token.actions.githubusercontent.com",
 		image,
 	)

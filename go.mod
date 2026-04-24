@@ -1,4 +1,4 @@
-module github.com/qjoly/copilot-kubectl-enforced
+module github.com/qjoly/kpil
 
 go 1.26.1
 

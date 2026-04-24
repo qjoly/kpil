@@ -1,4 +1,4 @@
-# copilot-kubectl-enforced
+# kpil
 
 A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secrets excluded), generates a short-lived kubeconfig, and drops you directly into the **GitHub Copilot CLI** inside an isolated container — then cleans everything up when you exit.
 
@@ -10,7 +10,7 @@ A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secret
 ┌─────────────────────────────────────────────────────────────┐
 │                      your machine                           │
 │                                                             │
-│  copilot-kubectl-enforced                                   │
+│  kpil                                   │
 │    │                                                        │
 │    ├─ 1. Creates ServiceAccount, ClusterRole (no secrets),  │
 │    │       ClusterRoleBinding  ──────────────► cluster      │
@@ -18,7 +18,7 @@ A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secret
 │    ├─ 2. Issues a 24 h ServiceAccount token  ◄─── cluster   │
 │    │       Writes  ./ro-kubeconfig  (mode 0600)             │
 │    │                                                        │
-│    ├─ 3. Pulls ghcr.io/qjoly/copilot-kubectl-enforced       │
+│    ├─ 3. Pulls ghcr.io/qjoly/kpil       │
 │    │                                                        │
 │    ├─ 4. docker / podman run  ──► container                 │
 │    │         -v ro-kubeconfig:/root/.kube/config:ro         │
@@ -65,22 +65,22 @@ This means the role works automatically with CRDs and custom API groups without 
 
 ```sh
 # macOS (arm64)
-curl -fsSL https://github.com/qjoly/copilot-kubectl-enforced/releases/latest/download/copilot-kubectl-enforced_latest_darwin_arm64.tar.gz \
-  | tar -xz && sudo mv copilot-kubectl-enforced /usr/local/bin/
+curl -fsSL https://github.com/qjoly/kpil/releases/latest/download/kpil_latest_darwin_arm64.tar.gz \
+  | tar -xz && sudo mv kpil /usr/local/bin/
 
 # Linux (amd64)
-curl -fsSL https://github.com/qjoly/copilot-kubectl-enforced/releases/latest/download/copilot-kubectl-enforced_latest_linux_amd64.tar.gz \
-  | tar -xz && sudo mv copilot-kubectl-enforced /usr/local/bin/
+curl -fsSL https://github.com/qjoly/kpil/releases/latest/download/kpil_latest_linux_amd64.tar.gz \
+  | tar -xz && sudo mv kpil /usr/local/bin/
 ```
 
-All releases and checksums are on the [Releases page](https://github.com/qjoly/copilot-kubectl-enforced/releases).
+All releases and checksums are on the [Releases page](https://github.com/qjoly/kpil/releases).
 
 **From source:**
 
 ```sh
-git clone https://github.com/qjoly/copilot-kubectl-enforced.git
-cd copilot-kubectl-enforced
-go build -o copilot-kubectl-enforced .
+git clone https://github.com/qjoly/kpil.git
+cd kpil
+go build -o kpil .
 ```
 
 ### 2. Export your GitHub token
@@ -94,7 +94,7 @@ export GH_TOKEN=github_pat_xxxxxxxxxxxx
 ### 3. Run
 
 ```sh
-copilot-kubectl-enforced
+kpil
 ```
 
 The tool connects to the cluster in your current `KUBECONFIG`, provisions the RBAC resources, generates a restricted kubeconfig, and opens the Copilot CLI. When you exit, everything is deleted automatically.
@@ -104,12 +104,12 @@ The tool connects to the cluster in your current `KUBECONFIG`, provisions the RB
 ## Usage
 
 ```
-copilot-kubectl-enforced [flags]
+kpil [flags]
 
 Flags:
       --build            Build the image from the local Dockerfile instead of pulling
       --image string     Container image to run
-                         (default "ghcr.io/qjoly/copilot-kubectl-enforced:latest")
+                         (default "ghcr.io/qjoly/kpil:latest")
       --insecure-image   Skip cosign signature verification (unsigned or local images)
       --kubeconfig       Admin kubeconfig path
                          (default: $KUBECONFIG or ~/.kube/config)
@@ -126,29 +126,29 @@ Flags:
 
 ```sh
 # Use a specific kubeconfig and namespace
-copilot-kubectl-enforced --kubeconfig ~/.kube/staging --namespace platform
+kpil --kubeconfig ~/.kube/staging --namespace platform
 
 # Use podman explicitly
-copilot-kubectl-enforced --runtime podman
+kpil --runtime podman
 
 # Use a specific image tag (e.g. a commit build)
-copilot-kubectl-enforced --image ghcr.io/qjoly/copilot-kubectl-enforced:sha-538cd59
+kpil --image ghcr.io/qjoly/kpil:sha-538cd59
 
 # Keep RBAC resources after exit (for debugging)
-copilot-kubectl-enforced --no-cleanup
+kpil --no-cleanup
 
 # Build the image locally instead of pulling (skips signature verification)
-GH_TOKEN=$GH_TOKEN copilot-kubectl-enforced --build
+GH_TOKEN=$GH_TOKEN kpil --build
 
 # Use an unsigned or locally-built image (skips cosign verification)
-copilot-kubectl-enforced --insecure-image
+kpil --insecure-image
 ```
 
 ---
 
 ## Container image
 
-Images are published to [ghcr.io/qjoly/copilot-kubectl-enforced](https://github.com/qjoly/copilot-kubectl-enforced/pkgs/container/copilot-kubectl-enforced).
+Images are published to [ghcr.io/qjoly/kpil](https://github.com/qjoly/kpil/pkgs/container/kpil).
 
 | Tag | Updated on |
 |---|---|
@@ -174,10 +174,10 @@ configuration needed as long as `cosign` is in your `PATH`.
 
 ```sh
 # Verification happens automatically:
-copilot-kubectl-enforced
+kpil
 
 # Skip verification for unsigned or locally-built images:
-copilot-kubectl-enforced --insecure-image
+kpil --insecure-image
 ```
 
 See **[docs/cosign.md](docs/cosign.md)** for full details on how signing works,
@@ -186,7 +186,7 @@ manual verification, and troubleshooting.
 ### Build locally
 
 ```sh
-docker build -t copilot-kubectl-enforced:local .
+docker build -t kpil:local .
 ```
 
 ---
@@ -223,7 +223,7 @@ No repository or organisation permissions are needed. See **[docs/github-pat.md]
 go run main.go
 
 # Build
-go build -o copilot-kubectl-enforced .
+go build -o kpil .
 
 # Vet
 go vet ./...

@@ -264,7 +264,7 @@ func supportsVerb(verbs metav1.Verbs, verb string) bool {
 // managedLabels returns a label set that identifies resources owned by this tool.
 func managedLabels() map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/managed-by": "copilot-kubectl-enforced",
+		"app.kubernetes.io/managed-by": "kpil",
 	}
 }
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------------------------------
-# copilot-kubectl-enforced — interactive shell image
+# kpil — interactive shell image
 #
 # Bakes in:
 #   - gh CLI (GitHub CLI)
@@ -11,11 +11,11 @@
 # using the GH_TOKEN environment variable — no token is needed at build time.
 #
 # Usage:
-#   docker build -t copilot-kubectl-enforced:latest .
+#   docker build -t kpil:latest .
 #   docker run -it \
 #     -v /path/to/ro-kubeconfig:/root/.kube/config:ro \
 #     -e GH_TOKEN=$GH_TOKEN \
-#     copilot-kubectl-enforced:latest
+#     kpil:latest
 # ---------------------------------------------------------------------------
 
 FROM node:20-slim

@@ -45,7 +45,7 @@ Open this URL in your browser. It pre-fills the token name, description, and
 the `copilot_requests: write` permission for you:
 
 ```
-https://github.com/settings/personal-access-tokens/new?name=copilot-kubectl-enforced&description=Copilot+CLI+token+for+copilot-kubectl-enforced&user_copilot_requests=read
+https://github.com/settings/personal-access-tokens/new?name=kpil&description=Copilot+CLI+token+for+kpil&user_copilot_requests=read
 ```
 
 Then:
@@ -59,7 +59,7 @@ Then:
    Fine-grained tokens**.
 2. Click **Generate new token**.
 3. Fill in:
-   - **Token name**: `copilot-kubectl-enforced` (or any name)
+   - **Token name**: `kpil` (or any name)
    - **Expiration**: choose a short lifetime (7–30 days recommended)
    - **Resource owner**: your personal account
    - **Repository access**: **No repositories** (Copilot requests need none)
@@ -91,7 +91,7 @@ Export the token before running the CLI:
 
 ```sh
 export GH_TOKEN=github_pat_xxxx
-copilot-kubectl-enforced --kubeconfig ~/.kube/config
+kpil --kubeconfig ~/.kube/config
 ```
 
 The CLI forwards `GH_TOKEN` into the container at runtime:
@@ -100,7 +100,7 @@ The CLI forwards `GH_TOKEN` into the container at runtime:
 docker run -it \
   -v /path/to/ro-kubeconfig:/root/.kube/config:ro \
   -e GH_TOKEN="$GH_TOKEN" \
-  ghcr.io/qjoly/copilot-kubectl-enforced:latest
+  ghcr.io/qjoly/kpil:latest
 ```
 
 Inside the container, the entrypoint script installs the `gh copilot` extension

@@ -21,7 +21,7 @@ interactive confirmation; the OIDC token provided by the GitHub Actions runner
 authenticates the signing request to Fulcio (Sigstore's certificate authority).
 
 ```
-cosign sign --yes ghcr.io/qjoly/copilot-kubectl-enforced@<digest>
+cosign sign --yes ghcr.io/qjoly/kpil@<digest>
 ```
 
 The signature is stored as an OCI artefact in the same registry namespace as
@@ -40,7 +40,7 @@ The signing certificate issued by Fulcio embeds the workflow's identity:
 
 | Field | Value |
 |---|---|
-| Subject (regexp) | `https://github.com/qjoly/copilot-kubectl-enforced/` |
+| Subject (regexp) | `https://github.com/qjoly/kpil/` |
 | OIDC issuer | `https://token.actions.githubusercontent.com` |
 
 This means only a GitHub Actions workflow running **inside this repository**
@@ -56,9 +56,9 @@ before `docker run` / `podman run`:
 
 ```
 Verifying image signature (cosign)…
-  Verifying cosign signature for ghcr.io/qjoly/copilot-kubectl-enforced:latest…
+  Verifying cosign signature for ghcr.io/qjoly/kpil:latest…
   Signature verified.
-Starting GitHub Copilot CLI (image: ghcr.io/qjoly/copilot-kubectl-enforced:latest)…
+Starting GitHub Copilot CLI (image: ghcr.io/qjoly/kpil:latest)…
 ```
 
 The check enforces:
@@ -73,7 +73,7 @@ the container is started:
 
 ```
 image verification failed:
-  image signature verification failed for ghcr.io/qjoly/copilot-kubectl-enforced:latest: ...
+  image signature verification failed for ghcr.io/qjoly/kpil:latest: ...
   cosign output: ...
   Use --insecure-image to skip verification (not recommended)
 ```
@@ -90,7 +90,7 @@ image verification failed:
 ## `--insecure-image` flag
 
 ```sh
-copilot-kubectl-enforced --insecure-image
+kpil --insecure-image
 ```
 
 Skips cosign verification entirely.  Use this when:
@@ -146,9 +146,9 @@ You can verify any published image independently of the CLI:
 
 ```sh
 cosign verify \
-  --certificate-identity-regexp="https://github.com/qjoly/copilot-kubectl-enforced/" \
+  --certificate-identity-regexp="https://github.com/qjoly/kpil/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/qjoly/copilot-kubectl-enforced:latest
+  ghcr.io/qjoly/kpil:latest
 ```
 
 Successful output (JSON, one entry per signature):
@@ -157,14 +157,14 @@ Successful output (JSON, one entry per signature):
 [
   {
     "critical": {
-      "identity": { "docker-reference": "ghcr.io/qjoly/copilot-kubectl-enforced" },
+      "identity": { "docker-reference": "ghcr.io/qjoly/kpil" },
       "image": { "docker-manifest-digest": "sha256:..." },
       "type": "cosign container image signature"
     },
     "optional": {
       "Bundle": { ... },
       "Issuer": "https://token.actions.githubusercontent.com",
-      "Subject": "https://github.com/qjoly/copilot-kubectl-enforced/.github/workflows/release.yml@refs/tags/v..."
+      "Subject": "https://github.com/qjoly/kpil/.github/workflows/release.yml@refs/tags/v..."
     }
   }
 ]
@@ -177,9 +177,9 @@ To verify a specific digest (recommended for reproducibility):
 
 ```sh
 cosign verify \
-  --certificate-identity-regexp="https://github.com/qjoly/copilot-kubectl-enforced/" \
+  --certificate-identity-regexp="https://github.com/qjoly/kpil/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/qjoly/copilot-kubectl-enforced@sha256:<digest>
+  ghcr.io/qjoly/kpil@sha256:<digest>
 ```
 
 ---
@@ -204,7 +204,7 @@ Pass `--insecure-image` to proceed without verification, or pull a newer
 signed tag:
 
 ```sh
-copilot-kubectl-enforced --image ghcr.io/qjoly/copilot-kubectl-enforced:latest
+kpil --image ghcr.io/qjoly/kpil:latest
 ```
 
 ### `error connecting to Rekor`

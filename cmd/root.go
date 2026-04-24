@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/qjoly/copilot-kubectl-enforced/internal/container"
-	"github.com/qjoly/copilot-kubectl-enforced/internal/k8s"
+	"github.com/qjoly/kpil/internal/container"
+	"github.com/qjoly/kpil/internal/k8s"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +30,9 @@ type Config struct {
 var cfg Config
 
 var rootCmd = &cobra.Command{
-	Use:   "copilot-kubectl-enforced",
+	Use:   "kpil",
 	Short: "Spin up a GitHub Copilot CLI container with a read-only (no-secrets) kubeconfig",
-	Long: `copilot-kubectl-enforced provisions a read-only Kubernetes ServiceAccount (excluding
+	Long: `kpil provisions a read-only Kubernetes ServiceAccount (excluding
 secrets access), generates a scoped kubeconfig, and launches an interactive container
 running the GitHub Copilot CLI and kubectl.
 
@@ -63,7 +63,7 @@ func init() {
 		"Path where the generated read-only kubeconfig is written")
 	rootCmd.Flags().StringVar(&cfg.Runtime, "runtime", "",
 		"Container runtime to use: docker or podman (default: auto-detect)")
-	rootCmd.Flags().StringVar(&cfg.Image, "image", "ghcr.io/qjoly/copilot-kubectl-enforced:latest",
+	rootCmd.Flags().StringVar(&cfg.Image, "image", "ghcr.io/qjoly/kpil:latest",
 		"Container image name:tag to run (default: published image on ghcr.io)")
 	rootCmd.Flags().BoolVar(&cfg.Build, "build", false,
 		"Build the container image from the local Dockerfile instead of pulling it (requires GH_TOKEN)")

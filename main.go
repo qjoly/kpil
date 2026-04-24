@@ -1,6 +1,6 @@
 package main
 
-import "github.com/qjoly/copilot-kubectl-enforced/cmd"
+import 	"github.com/qjoly/kpil/cmd"
 
 func main() {
 	cmd.Execute()

@@ -1,0 +1,22 @@
+# Default agent skills baked into the kpil container image at build time.
+#
+# Format: owner/repo/skill-name  (one entry per line)
+#   owner     — GitHub user or organisation that owns the repo
+#   repo      — repository name
+#   skill-name — directory name under .claude/skills/ that contains SKILL.md
+#
+# Lines starting with # and blank lines are ignored.
+#
+# The SKILL.md is fetched from:
+#   https://raw.githubusercontent.com/<owner>/<repo>/main/.claude/skills/<skill-name>/SKILL.md
+# and installed to:
+#   /root/.copilot/skills/<skill-name>/SKILL.md
+#
+# Additional skills can be injected at build time without editing this file:
+#   docker build --build-arg SKILLS="owner/repo/skill-name" -t kpil .
+#   kpil --build --skill owner/repo/skill-name
+#
+# Examples (uncomment to enable):
+# lobbi-docs/claude/kubernetes
+# lobbi-docs/claude/helm-deploy
+# lobbi-docs/claude/docker-build

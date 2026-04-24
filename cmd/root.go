@@ -34,6 +34,7 @@ type Config struct {
 	NetworkMode string   // network mode for the container (default: "host")
 	ExtraBinds  []string // additional volume mounts in "host:container[:opts]" format
 	Entrypoint  string   // override container entrypoint
+	Platform    string   // OCI platform string e.g. "linux/amd64", "linux/arm64"
 }
 
 var cfg Config
@@ -101,6 +102,9 @@ Requires --build. Example: --skill lobbi-docs/claude/kubernetes`)
 		"Prompt for runtime parameters (image, network mode, volume mounts, entrypoint)\n"+
 			"before launching the container.  Non-interactive behaviour is preserved when\n"+
 			"this flag is not set.")
+	rootCmd.Flags().StringVar(&cfg.Platform, "platform", "",
+		"OCI platform to run (e.g. linux/amd64, linux/arm64). Defaults to the daemon's native platform.\n"+
+			"Use linux/amd64 on Apple Silicon when the image has no arm64 variant.")
 }
 
 func run(cmd *cobra.Command, _ []string) error {
@@ -260,6 +264,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		ExtraBinds:      cfg.ExtraBinds,
 		NetworkMode:     cfg.NetworkMode,
 		Entrypoint:      cfg.Entrypoint,
+		Platform:        cfg.Platform,
 	}
 
 	if err := ctr.Run(ctx, runCfg); err != nil {

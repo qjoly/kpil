@@ -18,6 +18,7 @@ type RunConfig struct {
 	ExtraBinds      []string // additional volume mounts in "host:container[:opts]" format
 	NetworkMode     string   // network mode ("host", "bridge", "none", …); empty defaults to "host"
 	Entrypoint      string   // override container entrypoint; empty = use image default
+	Platform        string   // OCI platform string e.g. "linux/amd64", "linux/arm64"; empty = daemon default
 }
 
 // Client is the interface both the Docker-SDK backend and the exec fallback

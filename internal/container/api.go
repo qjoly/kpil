@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/moby/go-archive"
+	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/term"
 )
 
@@ -164,6 +165,17 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 		ctrCfg.Entrypoint = []string{cfg.Entrypoint}
 	}
 
+	// ---- Platform (optional) -------------------------------------------
+	var platform *specs.Platform
+	if cfg.Platform != "" {
+		parts := strings.SplitN(cfg.Platform, "/", 2)
+		p := &specs.Platform{OS: parts[0]}
+		if len(parts) == 2 {
+			p.Architecture = parts[1]
+		}
+		platform = p
+	}
+
 	// ---- Create (no AutoRemove — we clean up ourselves) -----------------
 	createResp, err := a.cli.ContainerCreate(
 		ctx,
@@ -172,7 +184,7 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 			NetworkMode: container.NetworkMode(networkMode),
 			Binds:       binds,
 		},
-		nil, nil, "",
+		nil, platform, "",
 	)
 	if err != nil {
 		return fmt.Errorf("creating container: %w", err)

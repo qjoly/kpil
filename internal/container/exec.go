@@ -96,6 +96,9 @@ func (e *execClient) Run(ctx context.Context, cfg RunConfig) error {
 		// '=value' is appended.
 		"-e", "GH_TOKEN",
 	}
+	if cfg.Platform != "" {
+		args = append(args, "--platform="+cfg.Platform)
+	}
 
 	if cfg.Workdir != "" {
 		absWorkdir, err := filepath.Abs(cfg.Workdir)

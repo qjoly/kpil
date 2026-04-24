@@ -97,6 +97,18 @@ func (e *execClient) Run(ctx context.Context, cfg RunConfig) error {
 		"-e", "GH_TOKEN",
 	}
 
+	if cfg.Workdir != "" {
+		absWorkdir, err := filepath.Abs(cfg.Workdir)
+		if err != nil {
+			return fmt.Errorf("resolving workdir path: %w", err)
+		}
+		mount := fmt.Sprintf("%s:/workspace", absWorkdir)
+		if cfg.WorkdirReadOnly {
+			mount += ":ro"
+		}
+		args = append(args, "-v", mount)
+	}
+
 	for _, bind := range cfg.ExtraBinds {
 		args = append(args, "-v", bind)
 	}

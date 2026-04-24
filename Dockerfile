@@ -120,29 +120,35 @@ RUN --mount=type=bind,source=.,target=/build-ctx \
     fi
 
 # ---------------------------------------------------------------------------
-# gh copilot extension — downloaded directly from the public release.
-# github/gh-copilot is a public repo; no token is required at build time.
+# GitHub Copilot CLI — downloaded from the public github/copilot-cli release.
+# No authentication required at build time (public repository).
 #
-# The binary is placed at the path that `gh` expects for extensions:
-#   ~/.local/share/gh/extensions/gh-copilot/gh-copilot
+# gh v2.91+ ships a built-in `gh copilot` wrapper that looks for a `copilot`
+# binary in PATH and delegates all arguments to it.  We install the binary
+# from github/copilot-cli directly to /usr/local/bin/copilot.
 #
-# TARGETARCH is a predefined BuildKit ARG automatically set to "amd64" or
-# "arm64" in multi-platform builds (buildx). It defaults to "amd64" for
-# plain `docker build` invocations.
+# Arch mapping (TARGETARCH → tarball suffix):
+#   amd64 → x64   |   arm64 → arm64
+#
+# TARGETARCH is set automatically by buildx in multi-platform builds and
+# defaults to "amd64" for plain `docker build` invocations.
 # ---------------------------------------------------------------------------
 ARG TARGETARCH=amd64
-RUN EXT_DIR="/root/.local/share/gh/extensions/gh-copilot" \
-    && mkdir -p "$EXT_DIR" \
-    && echo "  Downloading gh copilot extension (linux-${TARGETARCH})…" \
+RUN case "${TARGETARCH}" in \
+      amd64) CLI_ARCH="x64" ;; \
+      arm64) CLI_ARCH="arm64" ;; \
+      *)     CLI_ARCH="x64" ;; \
+    esac \
+    && echo "  Downloading GitHub Copilot CLI (linux-${CLI_ARCH})…" \
     && curl -fsSL \
-        "https://github.com/github/gh-copilot/releases/download/v1.2.0/linux-${TARGETARCH}" \
-        -o "${EXT_DIR}/gh-copilot" \
-    && chmod +x "${EXT_DIR}/gh-copilot" \
-    && echo "  Installed to ${EXT_DIR}/gh-copilot"
+        "https://github.com/github/copilot-cli/releases/download/v1.0.35/copilot-linux-${CLI_ARCH}.tar.gz" \
+        | tar -xz -C /usr/local/bin copilot \
+    && chmod +x /usr/local/bin/copilot \
+    && echo "  Installed to /usr/local/bin/copilot"
 
 # ---------------------------------------------------------------------------
-# Entrypoint — installs the gh copilot extension on first run (using the
-# runtime GH_TOKEN) then launches gh copilot suggest.
+# Entrypoint — safety-net download of the Copilot CLI if absent, then
+# launches gh copilot (interactive chat agent).
 # ---------------------------------------------------------------------------
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

@@ -11,11 +11,13 @@ import (
 
 // RunConfig holds what the container runner needs to start the container.
 type RunConfig struct {
-	Image       string
-	Kubeconfig  string
-	ExtraBinds  []string // additional volume mounts in "host:container[:opts]" format
-	NetworkMode string   // network mode ("host", "bridge", "none", …); empty defaults to "host"
-	Entrypoint  string   // override container entrypoint; empty = use image default
+	Image           string
+	Kubeconfig      string
+	Workdir         string   // host path to mount as /workspace inside the container (empty = no mount)
+	WorkdirReadOnly bool     // if true the workdir bind is mounted :ro
+	ExtraBinds      []string // additional volume mounts in "host:container[:opts]" format
+	NetworkMode     string   // network mode ("host", "bridge", "none", …); empty defaults to "host"
+	Entrypoint      string   // override container entrypoint; empty = use image default
 }
 
 // Client is the interface both the Docker-SDK backend and the exec fallback

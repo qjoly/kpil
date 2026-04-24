@@ -27,6 +27,8 @@ type Config struct {
 	TokenTTL        time.Duration
 	NoCleanup       bool
 	Skills          []string
+	Workdir         string
+	WorkdirReadOnly bool
 	// Interactive setup fields (populated by -i prompt or future flags)
 	Interactive bool
 	NetworkMode string   // network mode for the container (default: "host")
@@ -90,6 +92,11 @@ func init() {
 Repeatable; each skill's SKILL.md is fetched from raw.githubusercontent.com and
 installed to /root/.copilot/skills/<name>/ inside the container.
 Requires --build. Example: --skill lobbi-docs/claude/kubernetes`)
+	rootCmd.Flags().StringVar(&cfg.Workdir, "workdir", "",
+		"Mount a host directory into the container at /workspace so the AI can read and modify files.\n"+
+			"Example: --workdir $PWD  (read-write by default; use --workdir-readonly for read-only)")
+	rootCmd.Flags().BoolVar(&cfg.WorkdirReadOnly, "workdir-readonly", false,
+		"Mount the --workdir directory as read-only inside the container")
 	rootCmd.Flags().BoolVarP(&cfg.Interactive, "interactive", "i", false,
 		"Prompt for runtime parameters (image, network mode, volume mounts, entrypoint)\n"+
 			"before launching the container.  Non-interactive behaviour is preserved when\n"+
@@ -115,6 +122,9 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 	if cfg.Pull && cfg.Build {
 		return fmt.Errorf("--pull and --build are mutually exclusive: choose one")
+	}
+	if cfg.WorkdirReadOnly && cfg.Workdir == "" {
+		return fmt.Errorf("--workdir-readonly requires --workdir to be set")
 	}
 
 	// ---- Interactive setup prompt -------------------------------------
@@ -233,14 +243,23 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// ---- Run container -------------------------------------------------
 	fmt.Printf("Starting GitHub Copilot CLI (image: %s)…\n", cfg.Image)
+	if cfg.Workdir != "" {
+		access := "read-write"
+		if cfg.WorkdirReadOnly {
+			access = "read-only"
+		}
+		fmt.Printf("Mounting workdir %s → /workspace (%s)\n", cfg.Workdir, access)
+	}
 	fmt.Println("Press Ctrl+C to exit and trigger cleanup.")
 
 	runCfg := container.RunConfig{
-		Image:       cfg.Image,
-		Kubeconfig:  cfg.OutKubeconfig,
-		ExtraBinds:  cfg.ExtraBinds,
-		NetworkMode: cfg.NetworkMode,
-		Entrypoint:  cfg.Entrypoint,
+		Image:           cfg.Image,
+		Kubeconfig:      cfg.OutKubeconfig,
+		Workdir:         cfg.Workdir,
+		WorkdirReadOnly: cfg.WorkdirReadOnly,
+		ExtraBinds:      cfg.ExtraBinds,
+		NetworkMode:     cfg.NetworkMode,
+		Entrypoint:      cfg.Entrypoint,
 	}
 
 	if err := ctr.Run(ctx, runCfg); err != nil {

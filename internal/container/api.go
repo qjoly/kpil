@@ -132,6 +132,17 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 	ghToken := os.Getenv("GH_TOKEN")
 
 	binds := []string{absKubeconfig + ":/root/.kube/config:ro"}
+	if cfg.Workdir != "" {
+		absWorkdir, err := filepath.Abs(cfg.Workdir)
+		if err != nil {
+			return fmt.Errorf("resolving workdir path: %w", err)
+		}
+		mount := absWorkdir + ":/workspace"
+		if cfg.WorkdirReadOnly {
+			mount += ":ro"
+		}
+		binds = append(binds, mount)
+	}
 	binds = append(binds, cfg.ExtraBinds...)
 
 	networkMode := cfg.NetworkMode

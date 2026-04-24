@@ -165,7 +165,8 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 	if err != nil {
 		return fmt.Errorf("attaching to container: %w", err)
 	}
-	defer attach.Close()
+	// attach.Close() is called explicitly after ContainerWait so that the
+	// io.Copy goroutines below receive EOF and return promptly.
 
 	// ---- Raw terminal ---------------------------------------------------
 	inFD := int(os.Stdin.Fd())
@@ -239,6 +240,12 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 	case <-ctx.Done():
 		_ = a.cli.ContainerStop(context.Background(), id, container.StopOptions{})
 	}
+
+	// Close the hijacked connection so the io.Copy goroutines get EOF and
+	// return. Without this, <-copyDone would block forever because the
+	// Reader's underlying TCP connection stays open even after the container
+	// process exits.
+	attach.Close()
 
 	signal.Stop(winchCh)
 	<-copyDone

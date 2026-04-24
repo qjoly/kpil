@@ -20,34 +20,6 @@
 #     kpil:latest
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Stage 1: download the GitHub Copilot CLI binary for the TARGET architecture.
-#
-# Running this stage FROM --platform=$BUILDPLATFORM (the CI host, always
-# amd64) while declaring ARG TARGETARCH causes BuildKit to correctly inject
-# the target architecture (e.g. arm64) rather than the host's architecture.
-# Without this stage, BuildKit's native cross-compilation mode sets TARGETARCH
-# to the *execution* platform (amd64), so the arm64 image would get an x64
-# binary.
-# ---------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM alpine:3.21 AS copilot-downloader
-ARG TARGETARCH=amd64
-RUN apk add --no-cache curl \
-    && case "${TARGETARCH}" in \
-         amd64) CLI_ARCH="x64" ;; \
-         arm64) CLI_ARCH="arm64" ;; \
-         *)     CLI_ARCH="x64" ;; \
-       esac \
-    && echo "  Downloading GitHub Copilot CLI (linux-${CLI_ARCH})…" \
-    && curl -fsSL \
-        "https://github.com/github/copilot-cli/releases/download/v1.0.35/copilot-linux-${CLI_ARCH}.tar.gz" \
-        | tar -xz -C /usr/local/bin copilot \
-    && chmod +x /usr/local/bin/copilot \
-    && echo "  Installed to /usr/local/bin/copilot"
-
-# ---------------------------------------------------------------------------
-# Stage 2: main image
-# ---------------------------------------------------------------------------
 FROM node:25-slim
 
 # ---------------------------------------------------------------------------
@@ -148,10 +120,25 @@ RUN --mount=type=bind,source=.,target=/build-ctx \
     fi
 
 # ---------------------------------------------------------------------------
-# GitHub Copilot CLI — copied from the downloader stage above.
-# The binary was fetched for the correct TARGETARCH in stage 1.
+# GitHub Copilot CLI — downloaded from the public github/copilot-cli release.
+#
+# Uses $(dpkg --print-architecture) evaluated inside the target container
+# (arm64 via QEMU in CI) so the correct arch binary is always fetched.
+# TARGETARCH is intentionally avoided: BuildKit's native cross-compilation
+# mode sets it to the *build host* arch rather than the target arch.
 # ---------------------------------------------------------------------------
-COPY --from=copilot-downloader /usr/local/bin/copilot /usr/local/bin/copilot
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "${ARCH}" in \
+         amd64) CLI_ARCH="x64" ;; \
+         arm64) CLI_ARCH="arm64" ;; \
+         *)     CLI_ARCH="x64" ;; \
+       esac \
+    && echo "  Downloading GitHub Copilot CLI (linux-${CLI_ARCH})…" \
+    && curl -fsSL \
+        "https://github.com/github/copilot-cli/releases/download/v1.0.35/copilot-linux-${CLI_ARCH}.tar.gz" \
+        | tar -xz -C /usr/local/bin copilot \
+    && chmod +x /usr/local/bin/copilot \
+    && echo "  Installed to /usr/local/bin/copilot"
 
 # ---------------------------------------------------------------------------
 # Entrypoint — safety-net download of the Copilot CLI if absent, then

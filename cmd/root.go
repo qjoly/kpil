@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -35,6 +36,23 @@ type Config struct {
 	ExtraBinds  []string // additional volume mounts in "host:container[:opts]" format
 	Entrypoint  string   // override container entrypoint
 	Platform    string   // OCI platform string e.g. "linux/amd64", "linux/arm64"
+	Agent       string   // which AI agent to launch in the container: "copilot" or "claude"
+	// ClaudeConfigDir is a host directory mounted at /root/.claude inside the
+	// container so the user's Claude Code subscription login (created via
+	// `claude /login` on first run) persists across kpil invocations. Empty
+	// means "use the default derived from $HOME".
+	ClaudeConfigDir string
+	// OpenCodeConfigDir is a host directory whose data/ and config/ subdirs
+	// are mounted at ~/.local/share/opencode and ~/.config/opencode inside
+	// the container so OpenCode's auth state and configuration persist.
+	OpenCodeConfigDir string
+}
+
+// supportedAgents lists the agent identifiers accepted by --agent.
+var supportedAgents = map[string]struct{}{
+	"copilot":  {},
+	"claude":   {},
+	"opencode": {},
 }
 
 var cfg Config
@@ -102,6 +120,21 @@ Requires --build. Example: --skill lobbi-docs/claude/kubernetes`)
 		"Prompt for runtime parameters (image, network mode, volume mounts, entrypoint)\n"+
 			"before launching the container.  Non-interactive behaviour is preserved when\n"+
 			"this flag is not set.")
+	rootCmd.Flags().StringVar(&cfg.Agent, "agent", "copilot",
+		"AI coding agent to launch inside the container:\n"+
+			"  \"copilot\"  GitHub Copilot CLI (requires GH_TOKEN)\n"+
+			"  \"claude\"   Anthropic Claude Code (signs in via `claude /login`; ANTHROPIC_API_KEY\n"+
+			"             also accepted if set)\n"+
+			"  \"opencode\" sst/opencode CLI (signs in via `opencode auth login`; ANTHROPIC_API_KEY\n"+
+			"             and OPENAI_API_KEY are forwarded if set)")
+	rootCmd.Flags().StringVar(&cfg.ClaudeConfigDir, "claude-config", "",
+		"Host directory mounted at /root/.claude in the container to persist the\n"+
+			"Claude Code subscription session across runs (default: $HOME/.kpil/claude).\n"+
+			"Only used when --agent claude.")
+	rootCmd.Flags().StringVar(&cfg.OpenCodeConfigDir, "opencode-config", "",
+		"Host directory whose data/ and config/ subdirs back OpenCode's\n"+
+			"~/.local/share/opencode and ~/.config/opencode inside the container\n"+
+			"(default: $HOME/.kpil/opencode). Only used when --agent opencode.")
 	rootCmd.Flags().StringVar(&cfg.Platform, "platform", "",
 		"OCI platform to run (e.g. linux/amd64, linux/arm64). Defaults to the daemon's native platform.\n"+
 			"Use linux/amd64 on Apple Silicon when the image has no arm64 variant.")
@@ -111,12 +144,67 @@ func run(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// ---- validate GH_TOKEN --------------------------------------------
-	if os.Getenv("GH_TOKEN") == "" {
-		return fmt.Errorf("GH_TOKEN is not set\n"+
-			"  A GitHub personal access token with the 'copilot' scope is required.\n"+
-			"  See docs/github-pat.md for instructions, then re-run with:\n"+
-			"    GH_TOKEN=<your-token> %s", os.Args[0])
+	// ---- validate --agent ---------------------------------------------
+	if _, ok := supportedAgents[cfg.Agent]; !ok {
+		return fmt.Errorf("unsupported --agent %q: expected \"copilot\" or \"claude\"", cfg.Agent)
+	}
+
+	// ---- validate agent credentials -----------------------------------
+	switch cfg.Agent {
+	case "copilot":
+		if os.Getenv("GH_TOKEN") == "" {
+			return fmt.Errorf("GH_TOKEN is not set\n"+
+				"  A GitHub personal access token with the 'copilot' scope is required for --agent copilot.\n"+
+				"  See docs/github-pat.md for instructions, then re-run with:\n"+
+				"    GH_TOKEN=<your-token> %s", os.Args[0])
+		}
+	case "claude":
+		// Claude Code authenticates via a Claude Pro/Max subscription using
+		// `claude /login` on first run; the resulting session is persisted on
+		// the host in the mounted --claude-config directory. ANTHROPIC_API_KEY
+		// is forwarded if the user happens to have one, but it is not required.
+		if cfg.ClaudeConfigDir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("cannot determine $HOME for default --claude-config: %w", err)
+			}
+			cfg.ClaudeConfigDir = filepath.Join(home, ".kpil", "claude")
+		}
+		if err := os.MkdirAll(cfg.ClaudeConfigDir, 0o700); err != nil {
+			return fmt.Errorf("creating --claude-config dir %s: %w", cfg.ClaudeConfigDir, err)
+		}
+		absClaudeDir, err := filepath.Abs(cfg.ClaudeConfigDir)
+		if err != nil {
+			return fmt.Errorf("resolving --claude-config path %s: %w", cfg.ClaudeConfigDir, err)
+		}
+		cfg.ExtraBinds = append(cfg.ExtraBinds, absClaudeDir+":/root/.claude")
+	case "opencode":
+		// OpenCode keeps auth credentials under XDG_DATA_HOME (data/) and
+		// runtime config under XDG_CONFIG_HOME (config/). We persist both as
+		// sibling subdirs of a single host directory so `opencode auth login`
+		// only has to run once.
+		if cfg.OpenCodeConfigDir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("cannot determine $HOME for default --opencode-config: %w", err)
+			}
+			cfg.OpenCodeConfigDir = filepath.Join(home, ".kpil", "opencode")
+		}
+		absOC, err := filepath.Abs(cfg.OpenCodeConfigDir)
+		if err != nil {
+			return fmt.Errorf("resolving --opencode-config path %s: %w", cfg.OpenCodeConfigDir, err)
+		}
+		dataDir := filepath.Join(absOC, "data")
+		configDir := filepath.Join(absOC, "config")
+		for _, d := range []string{dataDir, configDir} {
+			if err := os.MkdirAll(d, 0o700); err != nil {
+				return fmt.Errorf("creating opencode dir %s: %w", d, err)
+			}
+		}
+		cfg.ExtraBinds = append(cfg.ExtraBinds,
+			dataDir+":/root/.local/share/opencode",
+			configDir+":/root/.config/opencode",
+		)
 	}
 
 	// ---- validate flag combinations ------------------------------------
@@ -246,7 +334,14 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	// ---- Run container -------------------------------------------------
-	fmt.Printf("Starting GitHub Copilot CLI (image: %s)…\n", cfg.Image)
+	agentLabel := "GitHub Copilot CLI"
+	switch cfg.Agent {
+	case "claude":
+		agentLabel = "Anthropic Claude Code"
+	case "opencode":
+		agentLabel = "OpenCode"
+	}
+	fmt.Printf("Starting %s (image: %s)…\n", agentLabel, cfg.Image)
 	if cfg.Workdir != "" {
 		access := "read-write"
 		if cfg.WorkdirReadOnly {
@@ -265,6 +360,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		NetworkMode:     cfg.NetworkMode,
 		Entrypoint:      cfg.Entrypoint,
 		Platform:        cfg.Platform,
+		Agent:           cfg.Agent,
 	}
 
 	if err := ctr.Run(ctx, runCfg); err != nil {

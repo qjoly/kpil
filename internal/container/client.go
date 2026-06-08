@@ -19,6 +19,7 @@ type RunConfig struct {
 	NetworkMode     string   // network mode ("host", "bridge", "none", …); empty defaults to "host"
 	Entrypoint      string   // override container entrypoint; empty = use image default
 	Platform        string   // OCI platform string e.g. "linux/amd64", "linux/arm64"; empty = daemon default
+	Agent           string   // "copilot" or "claude" — exported as AGENT env var so entrypoint.sh can route
 }
 
 // Client is the interface both the Docker-SDK backend and the exec fallback

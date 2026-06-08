@@ -18,7 +18,7 @@ ignoreLogs:
   - warning-deprecated
 
 params:
-  description: Provision a scoped read-only Kubernetes kubeconfig and launch GitHub Copilot CLI in an isolated container.
+  description: Provision a scoped read-only Kubernetes kubeconfig and launch GitHub Copilot CLI, Anthropic Claude Code, or OpenCode in an isolated container.
   navbar:
     displayTitle: true
     displayLogo: true

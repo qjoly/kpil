@@ -11,13 +11,13 @@ layout: hextra-home
 
 <div class="hx-mt-6 hx-mb-6">
 {{< hextra/hero-headline >}}
-  Kubernetes + GitHub Copilot,&nbsp;<br class="sm:hx-block hx-hidden" />safely isolated
+  Kubernetes + your AI agent,&nbsp;<br class="sm:hx-block hx-hidden" />safely isolated
 {{< /hextra/hero-headline >}}
 </div>
 
 <div class="hx-mb-12">
 {{< hextra/hero-subtitle >}}
-  Spin up a read-only kubeconfig and run GitHub Copilot CLI&nbsp;<br class="sm:hx-block hx-hidden" />in an ephemeral container — zero credentials left behind.
+  Spin up a read-only kubeconfig and run GitHub Copilot CLI, Claude Code, or OpenCode&nbsp;<br class="sm:hx-block hx-hidden" />in an ephemeral container — zero credentials left behind.
 {{< /hextra/hero-subtitle >}}
 </div>
 
@@ -56,5 +56,10 @@ layout: hextra-home
     title="Interactive setup"
     subtitle="Use -i to interactively configure image, network mode, volumes, and entrypoint."
     icon="adjustments"
+  >}}
+  {{< hextra/feature-card
+    title="Pick your agent"
+    subtitle="Switch between GitHub Copilot, Anthropic Claude Code, and sst/opencode with a single --agent flag."
+    icon="switch-horizontal"
   >}}
 {{< /hextra/feature-grid >}}

@@ -9,6 +9,9 @@ kpil [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--agent` | `copilot` | AI agent to launch: `copilot`, `claude`, or `opencode` |
+| `--claude-config` | `$HOME/.kpil/claude` | Host directory mounted at `/root/.claude` to persist the Claude Code subscription session. Only used with `--agent claude`. |
+| `--opencode-config` | `$HOME/.kpil/opencode` | Host directory whose `data/` and `config/` subdirs back OpenCode's `~/.local/share/opencode` and `~/.config/opencode`. Only used with `--agent opencode`. |
 | `--image` | `ghcr.io/qjoly/kpil:latest` | Container image to run |
 | `--kubeconfig` | `$KUBECONFIG` or `~/.kube/config` | Admin kubeconfig path |
 | `--namespace` | `default` | Namespace for the ServiceAccount |
@@ -29,6 +32,12 @@ kpil [flags]
 ## Examples
 
 ```sh
+# Launch Claude Code instead of Copilot
+kpil --agent claude
+
+# Launch OpenCode
+kpil --agent opencode
+
 # Use a specific kubeconfig and namespace
 kpil --kubeconfig ~/.kube/staging --namespace platform
 

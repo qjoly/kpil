@@ -38,19 +38,29 @@ case "$AGENT" in
     ;;
 
   claude)
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-      echo "Error: ANTHROPIC_API_KEY is not set." >&2
-      echo "       Re-run with: kpil --agent claude (with ANTHROPIC_API_KEY exported)" >&2
-      exit 1
-    fi
-
     if ! command -v claude >/dev/null 2>&1; then
       echo "Error: claude binary not found in the image." >&2
       echo "       Rebuild the image with --build to install Claude Code." >&2
       exit 1
     fi
 
-    # `claude` with no args starts an interactive session.
+    # Authentication:
+    #   - If /root/.claude already contains a credentials file (mounted from
+    #     the host's --claude-config directory), claude reuses the existing
+    #     Pro/Max subscription session.
+    #   - Otherwise claude prompts the user to run `/login` and walks them
+    #     through the OAuth flow; the resulting credentials are written under
+    #     /root/.claude and persist on the host via the bind mount.
+    #   - ANTHROPIC_API_KEY is honoured by the claude binary natively if set.
+    if [ ! -f /root/.claude/.credentials.json ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+      echo "" >&2
+      echo "No Claude Code session found in /root/.claude." >&2
+      echo "On first run, type  /login  inside Claude Code to sign in with your" >&2
+      echo "Claude Pro/Max subscription. The session is then persisted on the host" >&2
+      echo "and reused on subsequent kpil --agent claude invocations." >&2
+      echo "" >&2
+    fi
+
     # --dangerously-skip-permissions keeps parity with the Copilot flow:
     # the container is already an isolated, read-only-RBAC sandbox.
     exec claude --dangerously-skip-permissions

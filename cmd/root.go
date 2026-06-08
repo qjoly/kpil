@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -36,6 +37,11 @@ type Config struct {
 	Entrypoint  string   // override container entrypoint
 	Platform    string   // OCI platform string e.g. "linux/amd64", "linux/arm64"
 	Agent       string   // which AI agent to launch in the container: "copilot" or "claude"
+	// ClaudeConfigDir is a host directory mounted at /root/.claude inside the
+	// container so the user's Claude Code subscription login (created via
+	// `claude /login` on first run) persists across kpil invocations. Empty
+	// means "use the default derived from $HOME".
+	ClaudeConfigDir string
 }
 
 // supportedAgents lists the agent identifiers accepted by --agent.
@@ -111,7 +117,13 @@ Requires --build. Example: --skill lobbi-docs/claude/kubernetes`)
 			"this flag is not set.")
 	rootCmd.Flags().StringVar(&cfg.Agent, "agent", "copilot",
 		"AI coding agent to launch inside the container: \"copilot\" (GitHub Copilot CLI,\n"+
-			"requires GH_TOKEN) or \"claude\" (Anthropic Claude Code, requires ANTHROPIC_API_KEY)")
+			"requires GH_TOKEN) or \"claude\" (Anthropic Claude Code, signs in to a Claude\n"+
+			"Pro/Max subscription via `claude /login` on first run; ANTHROPIC_API_KEY is\n"+
+			"forwarded if set but not required)")
+	rootCmd.Flags().StringVar(&cfg.ClaudeConfigDir, "claude-config", "",
+		"Host directory mounted at /root/.claude in the container to persist the\n"+
+			"Claude Code subscription session across runs (default: $HOME/.kpil/claude).\n"+
+			"Only used when --agent claude.")
 	rootCmd.Flags().StringVar(&cfg.Platform, "platform", "",
 		"OCI platform to run (e.g. linux/amd64, linux/arm64). Defaults to the daemon's native platform.\n"+
 			"Use linux/amd64 on Apple Silicon when the image has no arm64 variant.")
@@ -136,12 +148,25 @@ func run(cmd *cobra.Command, _ []string) error {
 				"    GH_TOKEN=<your-token> %s", os.Args[0])
 		}
 	case "claude":
-		if os.Getenv("ANTHROPIC_API_KEY") == "" {
-			return fmt.Errorf("ANTHROPIC_API_KEY is not set\n"+
-				"  An Anthropic API key is required for --agent claude.\n"+
-				"  Create one at https://console.anthropic.com/ and re-run with:\n"+
-				"    ANTHROPIC_API_KEY=<your-key> %s --agent claude", os.Args[0])
+		// Claude Code authenticates via a Claude Pro/Max subscription using
+		// `claude /login` on first run; the resulting session is persisted on
+		// the host in the mounted --claude-config directory. ANTHROPIC_API_KEY
+		// is forwarded if the user happens to have one, but it is not required.
+		if cfg.ClaudeConfigDir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("cannot determine $HOME for default --claude-config: %w", err)
+			}
+			cfg.ClaudeConfigDir = filepath.Join(home, ".kpil", "claude")
 		}
+		if err := os.MkdirAll(cfg.ClaudeConfigDir, 0o700); err != nil {
+			return fmt.Errorf("creating --claude-config dir %s: %w", cfg.ClaudeConfigDir, err)
+		}
+		absClaudeDir, err := filepath.Abs(cfg.ClaudeConfigDir)
+		if err != nil {
+			return fmt.Errorf("resolving --claude-config path %s: %w", cfg.ClaudeConfigDir, err)
+		}
+		cfg.ExtraBinds = append(cfg.ExtraBinds, absClaudeDir+":/root/.claude")
 	}
 
 	// ---- validate flag combinations ------------------------------------

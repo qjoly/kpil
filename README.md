@@ -50,7 +50,7 @@ This means the role works automatically with CRDs and custom API groups without 
 | `docker` or `podman` | Auto-detected; `docker` preferred |
 | A kubeconfig with **cluster-admin** | Used only to provision RBAC |
 | `GH_TOKEN` env var | Required for `--agent copilot` (default). Fine-grained PAT with `copilot_requests: write` — see [docs/github-pat.md](docs/github-pat.md) |
-| `ANTHROPIC_API_KEY` env var | Required for `--agent claude`. Create one at [console.anthropic.com](https://console.anthropic.com/) |
+| A Claude Pro/Max subscription | Required for `--agent claude`. Sign in once via `/login` inside the agent on first run; the session is persisted under `~/.kpil/claude` on the host. `ANTHROPIC_API_KEY` is also honoured if you already have one. |
 | A GitHub Copilot subscription | Required to use the Copilot CLI |
 | `cosign` (optional) | Required for image signature verification — see [docs/cosign.md](docs/cosign.md). Use `--insecure-image` to skip. |
 
@@ -104,7 +104,14 @@ For **GitHub Copilot** (default), create a fine-grained PAT scoped only to Copil
 export GH_TOKEN=github_pat_xxxxxxxxxxxx
 ```
 
-For **Anthropic Claude Code**, create an API key at [console.anthropic.com](https://console.anthropic.com/) and export it:
+For **Anthropic Claude Code** with a **Claude Pro/Max subscription**, you don't need to set anything up-front. On first run, type `/login` inside the agent to start the OAuth flow; the resulting session is stored in `~/.kpil/claude` on the host and reused on subsequent runs.
+
+```sh
+# First run only — completes the /login flow once and persists the session
+kpil --agent claude
+```
+
+If you happen to have an API key instead, it is also honoured:
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
@@ -130,8 +137,10 @@ The tool connects to the cluster in your current `KUBECONFIG`, provisions the RB
 kpil [flags]
 
 Flags:
-      --agent string     AI agent to launch: "copilot" or "claude" (default "copilot")
-      --build            Build the image from the local Dockerfile instead of pulling
+      --agent string         AI agent to launch: "copilot" or "claude" (default "copilot")
+      --claude-config string Host directory mounted at /root/.claude to persist the
+                             Claude Code subscription session (default: $HOME/.kpil/claude)
+      --build                Build the image from the local Dockerfile instead of pulling
       --image string     Container image to run
                          (default "ghcr.io/qjoly/kpil:latest")
       --insecure-image   Skip cosign signature verification (unsigned or local images)
@@ -149,8 +158,8 @@ Flags:
 ### Examples
 
 ```sh
-# Launch Claude Code instead of GitHub Copilot
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY kpil --agent claude
+# Launch Claude Code instead of GitHub Copilot (subscription auth — run /login on first launch)
+kpil --agent claude
 
 # Use a specific kubeconfig and namespace
 kpil --kubeconfig ~/.kube/staging --namespace platform

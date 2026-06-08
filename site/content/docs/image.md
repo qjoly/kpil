@@ -1,6 +1,6 @@
 ---
 title: Container Image
-weight: 4
+weight: 6
 ---
 
 Images are published to [ghcr.io/qjoly/kpil](https://github.com/qjoly/kpil/pkgs/container/kpil).
@@ -21,8 +21,12 @@ The image is built for `linux/amd64` and `linux/arm64`.
 ## Contents
 
 - `kubectl` (latest stable at build time)
-- `gh` CLI (latest stable at build time)
+- `gh` CLI + `gh copilot` extension (latest stable at build time)
 - `copilot` binary (from [github/copilot-cli](https://github.com/github/copilot-cli))
+- `claude` binary — [Anthropic Claude Code](https://www.anthropic.com/claude-code), installed via `@anthropic-ai/claude-code`
+- `opencode` binary — [sst/opencode](https://github.com/sst/opencode), installed via `opencode-ai`
+
+The entrypoint dispatches to the right agent at runtime based on the `AGENT` environment variable set by kpil (mirroring `--agent`).
 
 ## Signature verification
 

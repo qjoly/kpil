@@ -133,6 +133,11 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 	}
 
 	ghToken := os.Getenv("GH_TOKEN")
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	agent := cfg.Agent
+	if agent == "" {
+		agent = "copilot"
+	}
 
 	binds := []string{absKubeconfig + ":/root/.kube/config:ro"}
 	if cfg.Workdir != "" {
@@ -161,7 +166,7 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Env:          []string{"GH_TOKEN=" + ghToken},
+		Env:          []string{"GH_TOKEN=" + ghToken, "ANTHROPIC_API_KEY=" + anthropicKey, "AGENT=" + agent},
 	}
 	if cfg.Entrypoint != "" {
 		ctrCfg.Entrypoint = []string{cfg.Entrypoint}

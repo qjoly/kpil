@@ -1,6 +1,6 @@
 # kpil (Kubernetes + Copilot)
 
-A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secrets excluded), generates a short-lived kubeconfig, and drops you directly into the **GitHub Copilot CLI** inside an isolated container — then cleans everything up when you exit.
+A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secrets excluded), generates a short-lived kubeconfig, and drops you directly into an AI coding agent — **GitHub Copilot CLI** or **Anthropic Claude Code** — inside an isolated container, then cleans everything up when you exit.
 
 ![demo](demo.gif)
 
@@ -49,7 +49,8 @@ This means the role works automatically with CRDs and custom API groups without 
 | Go 1.21+ | For building from source |
 | `docker` or `podman` | Auto-detected; `docker` preferred |
 | A kubeconfig with **cluster-admin** | Used only to provision RBAC |
-| `GH_TOKEN` env var | Fine-grained PAT with `copilot_requests: write` — see [docs/github-pat.md](docs/github-pat.md) |
+| `GH_TOKEN` env var | Required for `--agent copilot` (default). Fine-grained PAT with `copilot_requests: write` — see [docs/github-pat.md](docs/github-pat.md) |
+| `ANTHROPIC_API_KEY` env var | Required for `--agent claude`. Create one at [console.anthropic.com](https://console.anthropic.com/) |
 | A GitHub Copilot subscription | Required to use the Copilot CLI |
 | `cosign` (optional) | Required for image signature verification — see [docs/cosign.md](docs/cosign.md). Use `--insecure-image` to skip. |
 
@@ -95,21 +96,31 @@ cd kpil
 go build -o kpil .
 ```
 
-### 2. Export your GitHub token
+### 2. Export your AI agent credentials
 
-Create a fine-grained PAT scoped **only** to Copilot (see [docs/github-pat.md](docs/github-pat.md)):
+For **GitHub Copilot** (default), create a fine-grained PAT scoped only to Copilot (see [docs/github-pat.md](docs/github-pat.md)):
 
 ```sh
 export GH_TOKEN=github_pat_xxxxxxxxxxxx
 ```
 
+For **Anthropic Claude Code**, create an API key at [console.anthropic.com](https://console.anthropic.com/) and export it:
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
+```
+
 ### 3. Run
 
 ```sh
+# GitHub Copilot (default)
 kpil
+
+# Claude Code
+kpil --agent claude
 ```
 
-The tool connects to the cluster in your current `KUBECONFIG`, provisions the RBAC resources, generates a restricted kubeconfig, and opens the Copilot CLI. When you exit, everything is deleted automatically.
+The tool connects to the cluster in your current `KUBECONFIG`, provisions the RBAC resources, generates a restricted kubeconfig, and opens the selected agent. When you exit, everything is deleted automatically.
 
 ---
 
@@ -119,6 +130,7 @@ The tool connects to the cluster in your current `KUBECONFIG`, provisions the RB
 kpil [flags]
 
 Flags:
+      --agent string     AI agent to launch: "copilot" or "claude" (default "copilot")
       --build            Build the image from the local Dockerfile instead of pulling
       --image string     Container image to run
                          (default "ghcr.io/qjoly/kpil:latest")
@@ -137,6 +149,9 @@ Flags:
 ### Examples
 
 ```sh
+# Launch Claude Code instead of GitHub Copilot
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY kpil --agent claude
+
 # Use a specific kubeconfig and namespace
 kpil --kubeconfig ~/.kube/staging --namespace platform
 
@@ -174,6 +189,8 @@ The image contains:
 - `kubectl` (latest stable at build time)
 - `gh` CLI (latest stable at build time)
 - `gh copilot` extension (pre-installed at build time — no token needed at build)
+- GitHub Copilot standalone CLI (`copilot` binary)
+- Anthropic Claude Code CLI (`claude`, installed via npm)
 
 The image requires **no token at build time**. `GH_TOKEN` is only needed at runtime and is forwarded automatically from your shell environment.
 

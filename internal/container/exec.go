@@ -91,11 +91,17 @@ func (e *execClient) Run(ctx context.Context, cfg RunConfig) error {
 		"-it",
 		"--network=" + networkMode,
 		"-v", fmt.Sprintf("%s:/root/.kube/config:ro", absKubeconfig),
-		// Forward GH_TOKEN without reading its value in Go — both Docker and
-		// Podman resolve the value from the calling process env when no
+		// Forward credentials without reading their values in Go — both Docker
+		// and Podman resolve the value from the calling process env when no
 		// '=value' is appended.
 		"-e", "GH_TOKEN",
+		"-e", "ANTHROPIC_API_KEY",
 	}
+	agent := cfg.Agent
+	if agent == "" {
+		agent = "copilot"
+	}
+	args = append(args, "-e", "AGENT="+agent)
 	if cfg.Platform != "" {
 		args = append(args, "--platform="+cfg.Platform)
 	}

@@ -141,8 +141,18 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && echo "  Installed to /usr/local/bin/copilot"
 
 # ---------------------------------------------------------------------------
+# Claude Code — Anthropic's official coding agent CLI, installed globally via
+# npm.  Picked up at runtime when `kpil --agent claude` is used.  Pinned to a
+# specific version so rebuilds are reproducible.
+# ---------------------------------------------------------------------------
+ARG CLAUDE_CODE_VERSION=latest
+RUN echo "  Installing Claude Code (${CLAUDE_CODE_VERSION})…" \
+    && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && claude --version
+
+# ---------------------------------------------------------------------------
 # Entrypoint — safety-net download of the Copilot CLI if absent, then
-# launches gh copilot (interactive chat agent).
+# launches the requested agent (gh copilot or claude code).
 # ---------------------------------------------------------------------------
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

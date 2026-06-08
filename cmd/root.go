@@ -35,6 +35,13 @@ type Config struct {
 	ExtraBinds  []string // additional volume mounts in "host:container[:opts]" format
 	Entrypoint  string   // override container entrypoint
 	Platform    string   // OCI platform string e.g. "linux/amd64", "linux/arm64"
+	Agent       string   // which AI agent to launch in the container: "copilot" or "claude"
+}
+
+// supportedAgents lists the agent identifiers accepted by --agent.
+var supportedAgents = map[string]struct{}{
+	"copilot": {},
+	"claude":  {},
 }
 
 var cfg Config
@@ -102,6 +109,9 @@ Requires --build. Example: --skill lobbi-docs/claude/kubernetes`)
 		"Prompt for runtime parameters (image, network mode, volume mounts, entrypoint)\n"+
 			"before launching the container.  Non-interactive behaviour is preserved when\n"+
 			"this flag is not set.")
+	rootCmd.Flags().StringVar(&cfg.Agent, "agent", "copilot",
+		"AI coding agent to launch inside the container: \"copilot\" (GitHub Copilot CLI,\n"+
+			"requires GH_TOKEN) or \"claude\" (Anthropic Claude Code, requires ANTHROPIC_API_KEY)")
 	rootCmd.Flags().StringVar(&cfg.Platform, "platform", "",
 		"OCI platform to run (e.g. linux/amd64, linux/arm64). Defaults to the daemon's native platform.\n"+
 			"Use linux/amd64 on Apple Silicon when the image has no arm64 variant.")
@@ -111,12 +121,27 @@ func run(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// ---- validate GH_TOKEN --------------------------------------------
-	if os.Getenv("GH_TOKEN") == "" {
-		return fmt.Errorf("GH_TOKEN is not set\n"+
-			"  A GitHub personal access token with the 'copilot' scope is required.\n"+
-			"  See docs/github-pat.md for instructions, then re-run with:\n"+
-			"    GH_TOKEN=<your-token> %s", os.Args[0])
+	// ---- validate --agent ---------------------------------------------
+	if _, ok := supportedAgents[cfg.Agent]; !ok {
+		return fmt.Errorf("unsupported --agent %q: expected \"copilot\" or \"claude\"", cfg.Agent)
+	}
+
+	// ---- validate agent credentials -----------------------------------
+	switch cfg.Agent {
+	case "copilot":
+		if os.Getenv("GH_TOKEN") == "" {
+			return fmt.Errorf("GH_TOKEN is not set\n"+
+				"  A GitHub personal access token with the 'copilot' scope is required for --agent copilot.\n"+
+				"  See docs/github-pat.md for instructions, then re-run with:\n"+
+				"    GH_TOKEN=<your-token> %s", os.Args[0])
+		}
+	case "claude":
+		if os.Getenv("ANTHROPIC_API_KEY") == "" {
+			return fmt.Errorf("ANTHROPIC_API_KEY is not set\n"+
+				"  An Anthropic API key is required for --agent claude.\n"+
+				"  Create one at https://console.anthropic.com/ and re-run with:\n"+
+				"    ANTHROPIC_API_KEY=<your-key> %s --agent claude", os.Args[0])
+		}
 	}
 
 	// ---- validate flag combinations ------------------------------------
@@ -246,7 +271,11 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	// ---- Run container -------------------------------------------------
-	fmt.Printf("Starting GitHub Copilot CLI (image: %s)…\n", cfg.Image)
+	agentLabel := "GitHub Copilot CLI"
+	if cfg.Agent == "claude" {
+		agentLabel = "Anthropic Claude Code"
+	}
+	fmt.Printf("Starting %s (image: %s)…\n", agentLabel, cfg.Image)
 	if cfg.Workdir != "" {
 		access := "read-write"
 		if cfg.WorkdirReadOnly {
@@ -265,6 +294,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		NetworkMode:     cfg.NetworkMode,
 		Entrypoint:      cfg.Entrypoint,
 		Platform:        cfg.Platform,
+		Agent:           cfg.Agent,
 	}
 
 	if err := ctr.Run(ctx, runCfg); err != nil {

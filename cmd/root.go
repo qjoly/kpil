@@ -42,12 +42,17 @@ type Config struct {
 	// `claude /login` on first run) persists across kpil invocations. Empty
 	// means "use the default derived from $HOME".
 	ClaudeConfigDir string
+	// OpenCodeConfigDir is a host directory whose data/ and config/ subdirs
+	// are mounted at ~/.local/share/opencode and ~/.config/opencode inside
+	// the container so OpenCode's auth state and configuration persist.
+	OpenCodeConfigDir string
 }
 
 // supportedAgents lists the agent identifiers accepted by --agent.
 var supportedAgents = map[string]struct{}{
-	"copilot": {},
-	"claude":  {},
+	"copilot":  {},
+	"claude":   {},
+	"opencode": {},
 }
 
 var cfg Config
@@ -116,14 +121,20 @@ Requires --build. Example: --skill lobbi-docs/claude/kubernetes`)
 			"before launching the container.  Non-interactive behaviour is preserved when\n"+
 			"this flag is not set.")
 	rootCmd.Flags().StringVar(&cfg.Agent, "agent", "copilot",
-		"AI coding agent to launch inside the container: \"copilot\" (GitHub Copilot CLI,\n"+
-			"requires GH_TOKEN) or \"claude\" (Anthropic Claude Code, signs in to a Claude\n"+
-			"Pro/Max subscription via `claude /login` on first run; ANTHROPIC_API_KEY is\n"+
-			"forwarded if set but not required)")
+		"AI coding agent to launch inside the container:\n"+
+			"  \"copilot\"  GitHub Copilot CLI (requires GH_TOKEN)\n"+
+			"  \"claude\"   Anthropic Claude Code (signs in via `claude /login`; ANTHROPIC_API_KEY\n"+
+			"             also accepted if set)\n"+
+			"  \"opencode\" sst/opencode CLI (signs in via `opencode auth login`; ANTHROPIC_API_KEY\n"+
+			"             and OPENAI_API_KEY are forwarded if set)")
 	rootCmd.Flags().StringVar(&cfg.ClaudeConfigDir, "claude-config", "",
 		"Host directory mounted at /root/.claude in the container to persist the\n"+
 			"Claude Code subscription session across runs (default: $HOME/.kpil/claude).\n"+
 			"Only used when --agent claude.")
+	rootCmd.Flags().StringVar(&cfg.OpenCodeConfigDir, "opencode-config", "",
+		"Host directory whose data/ and config/ subdirs back OpenCode's\n"+
+			"~/.local/share/opencode and ~/.config/opencode inside the container\n"+
+			"(default: $HOME/.kpil/opencode). Only used when --agent opencode.")
 	rootCmd.Flags().StringVar(&cfg.Platform, "platform", "",
 		"OCI platform to run (e.g. linux/amd64, linux/arm64). Defaults to the daemon's native platform.\n"+
 			"Use linux/amd64 on Apple Silicon when the image has no arm64 variant.")
@@ -167,6 +178,33 @@ func run(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("resolving --claude-config path %s: %w", cfg.ClaudeConfigDir, err)
 		}
 		cfg.ExtraBinds = append(cfg.ExtraBinds, absClaudeDir+":/root/.claude")
+	case "opencode":
+		// OpenCode keeps auth credentials under XDG_DATA_HOME (data/) and
+		// runtime config under XDG_CONFIG_HOME (config/). We persist both as
+		// sibling subdirs of a single host directory so `opencode auth login`
+		// only has to run once.
+		if cfg.OpenCodeConfigDir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("cannot determine $HOME for default --opencode-config: %w", err)
+			}
+			cfg.OpenCodeConfigDir = filepath.Join(home, ".kpil", "opencode")
+		}
+		absOC, err := filepath.Abs(cfg.OpenCodeConfigDir)
+		if err != nil {
+			return fmt.Errorf("resolving --opencode-config path %s: %w", cfg.OpenCodeConfigDir, err)
+		}
+		dataDir := filepath.Join(absOC, "data")
+		configDir := filepath.Join(absOC, "config")
+		for _, d := range []string{dataDir, configDir} {
+			if err := os.MkdirAll(d, 0o700); err != nil {
+				return fmt.Errorf("creating opencode dir %s: %w", d, err)
+			}
+		}
+		cfg.ExtraBinds = append(cfg.ExtraBinds,
+			dataDir+":/root/.local/share/opencode",
+			configDir+":/root/.config/opencode",
+		)
 	}
 
 	// ---- validate flag combinations ------------------------------------
@@ -297,8 +335,11 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// ---- Run container -------------------------------------------------
 	agentLabel := "GitHub Copilot CLI"
-	if cfg.Agent == "claude" {
+	switch cfg.Agent {
+	case "claude":
 		agentLabel = "Anthropic Claude Code"
+	case "opencode":
+		agentLabel = "OpenCode"
 	}
 	fmt.Printf("Starting %s (image: %s)…\n", agentLabel, cfg.Image)
 	if cfg.Workdir != "" {

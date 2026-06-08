@@ -1,6 +1,6 @@
 # kpil (Kubernetes + Copilot)
 
-A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secrets excluded), generates a short-lived kubeconfig, and drops you directly into an AI coding agent — **GitHub Copilot CLI** or **Anthropic Claude Code** — inside an isolated container, then cleans everything up when you exit.
+A CLI tool that provisions a scoped, read-only Kubernetes ServiceAccount (secrets excluded), generates a short-lived kubeconfig, and drops you directly into an AI coding agent — **GitHub Copilot CLI**, **Anthropic Claude Code**, or **OpenCode** — inside an isolated container, then cleans everything up when you exit.
 
 ![demo](demo.gif)
 
@@ -51,6 +51,7 @@ This means the role works automatically with CRDs and custom API groups without 
 | A kubeconfig with **cluster-admin** | Used only to provision RBAC |
 | `GH_TOKEN` env var | Required for `--agent copilot` (default). Fine-grained PAT with `copilot_requests: write` — see [docs/github-pat.md](docs/github-pat.md) |
 | A Claude Pro/Max subscription | Required for `--agent claude`. Sign in once via `/login` inside the agent on first run; the session is persisted under `~/.kpil/claude` on the host. `ANTHROPIC_API_KEY` is also honoured if you already have one. |
+| A provider account for OpenCode | Required for `--agent opencode`. Run `opencode auth login` on first run to pair a provider (Anthropic, OpenAI, …); the session is persisted under `~/.kpil/opencode` on the host. `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are forwarded if set. |
 | A GitHub Copilot subscription | Required to use the Copilot CLI |
 | `cosign` (optional) | Required for image signature verification — see [docs/cosign.md](docs/cosign.md). Use `--insecure-image` to skip. |
 
@@ -117,6 +118,8 @@ If you happen to have an API key instead, it is also honoured:
 export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
 ```
 
+For **OpenCode**, run `opencode auth login` inside the agent on first run to authenticate with your preferred provider; the session is persisted in `~/.kpil/opencode` on the host. `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are forwarded into the container if set.
+
 ### 3. Run
 
 ```sh
@@ -125,6 +128,9 @@ kpil
 
 # Claude Code
 kpil --agent claude
+
+# OpenCode
+kpil --agent opencode
 ```
 
 The tool connects to the cluster in your current `KUBECONFIG`, provisions the RBAC resources, generates a restricted kubeconfig, and opens the selected agent. When you exit, everything is deleted automatically.
@@ -137,10 +143,12 @@ The tool connects to the cluster in your current `KUBECONFIG`, provisions the RB
 kpil [flags]
 
 Flags:
-      --agent string         AI agent to launch: "copilot" or "claude" (default "copilot")
-      --claude-config string Host directory mounted at /root/.claude to persist the
-                             Claude Code subscription session (default: $HOME/.kpil/claude)
-      --build                Build the image from the local Dockerfile instead of pulling
+      --agent string           AI agent: "copilot", "claude", or "opencode" (default "copilot")
+      --claude-config string   Host directory mounted at /root/.claude to persist the
+                               Claude Code subscription session (default: $HOME/.kpil/claude)
+      --opencode-config string Host directory backing OpenCode's data + config dirs in
+                               the container (default: $HOME/.kpil/opencode)
+      --build                  Build the image from the local Dockerfile instead of pulling
       --image string     Container image to run
                          (default "ghcr.io/qjoly/kpil:latest")
       --insecure-image   Skip cosign signature verification (unsigned or local images)
@@ -160,6 +168,9 @@ Flags:
 ```sh
 # Launch Claude Code instead of GitHub Copilot (subscription auth — run /login on first launch)
 kpil --agent claude
+
+# Launch OpenCode (run `opencode auth login` on first launch to pair a provider)
+kpil --agent opencode
 
 # Use a specific kubeconfig and namespace
 kpil --kubeconfig ~/.kube/staging --namespace platform
@@ -200,6 +211,7 @@ The image contains:
 - `gh copilot` extension (pre-installed at build time — no token needed at build)
 - GitHub Copilot standalone CLI (`copilot` binary)
 - Anthropic Claude Code CLI (`claude`, installed via npm)
+- OpenCode CLI (`opencode`, installed via npm)
 
 The image requires **no token at build time**. `GH_TOKEN` is only needed at runtime and is forwarded automatically from your shell environment.
 

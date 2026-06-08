@@ -151,6 +151,17 @@ RUN echo "  Installing Claude Code (${CLAUDE_CODE_VERSION})…" \
     && claude --version
 
 # ---------------------------------------------------------------------------
+# OpenCode — sst/opencode terminal coding agent, installed globally via npm.
+# Selected at runtime with `kpil --agent opencode`. Provider auth is
+# performed inside the container with `opencode auth login` and persisted
+# on the host through the bind-mounts wired up by kpil.
+# ---------------------------------------------------------------------------
+ARG OPENCODE_VERSION=latest
+RUN echo "  Installing OpenCode (${OPENCODE_VERSION})…" \
+    && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
+    && opencode --version
+
+# ---------------------------------------------------------------------------
 # Entrypoint — safety-net download of the Copilot CLI if absent, then
 # launches the requested agent (gh copilot or claude code).
 # ---------------------------------------------------------------------------

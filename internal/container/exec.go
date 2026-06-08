@@ -96,6 +96,7 @@ func (e *execClient) Run(ctx context.Context, cfg RunConfig) error {
 		// '=value' is appended.
 		"-e", "GH_TOKEN",
 		"-e", "ANTHROPIC_API_KEY",
+		"-e", "OPENAI_API_KEY",
 	}
 	agent := cfg.Agent
 	if agent == "" {

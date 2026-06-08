@@ -87,8 +87,31 @@ case "$AGENT" in
     claude --dangerously-skip-permissions
     ;;
 
+  opencode)
+    if ! command -v opencode >/dev/null 2>&1; then
+      echo "Error: opencode binary not found in the image." >&2
+      echo "       Rebuild the image with --build to install OpenCode." >&2
+      exit 1
+    fi
+
+    # OpenCode authenticates with its providers via `opencode auth login`.
+    # Credentials are written under ~/.local/share/opencode/auth.json, which
+    # is bind-mounted from the host, so the login persists across runs.
+    if [ ! -f /root/.local/share/opencode/auth.json ] \
+       && [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+      echo "" >&2
+      echo "No OpenCode session found in /root/.local/share/opencode." >&2
+      echo "On first run, run  opencode auth login  inside the container to sign in" >&2
+      echo "with your provider (Anthropic, OpenAI, …). The session is then persisted" >&2
+      echo "on the host and reused on subsequent kpil --agent opencode invocations." >&2
+      echo "" >&2
+    fi
+
+    exec opencode
+    ;;
+
   *)
-    echo "Error: unknown AGENT=\"$AGENT\" (expected \"copilot\" or \"claude\")." >&2
+    echo "Error: unknown AGENT=\"$AGENT\" (expected \"copilot\", \"claude\", or \"opencode\")." >&2
     exit 1
     ;;
 esac

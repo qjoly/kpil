@@ -134,6 +134,7 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 
 	ghToken := os.Getenv("GH_TOKEN")
 	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	openaiKey := os.Getenv("OPENAI_API_KEY")
 	agent := cfg.Agent
 	if agent == "" {
 		agent = "copilot"
@@ -166,7 +167,12 @@ func (a *apiClient) Run(ctx context.Context, cfg RunConfig) error {
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Env:          []string{"GH_TOKEN=" + ghToken, "ANTHROPIC_API_KEY=" + anthropicKey, "AGENT=" + agent},
+		Env: []string{
+			"GH_TOKEN=" + ghToken,
+			"ANTHROPIC_API_KEY=" + anthropicKey,
+			"OPENAI_API_KEY=" + openaiKey,
+			"AGENT=" + agent,
+		},
 	}
 	if cfg.Entrypoint != "" {
 		ctrCfg.Entrypoint = []string{cfg.Entrypoint}

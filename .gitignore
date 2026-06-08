@@ -1,6 +1,7 @@
 # Binaries
 /copilot-kubectl-enforced
 /dist/
+/kpil
 
 # Go
 *.exe

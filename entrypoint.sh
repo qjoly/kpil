@@ -61,8 +61,12 @@ case "$AGENT" in
       echo "" >&2
     fi
 
-    # --dangerously-skip-permissions keeps parity with the Copilot flow:
-    # the container is already an isolated, read-only-RBAC sandbox.
+    # The container is itself the sandbox (read-only RBAC, no host filesystem
+    # outside the bind-mounts, isolated network namespace), so we set
+    # IS_SANDBOX=1 to let claude's --dangerously-skip-permissions work even
+    # though the in-container UID is root. Without this claude refuses to
+    # start with "cannot be used with root/sudo privileges".
+    export IS_SANDBOX=1
     exec claude --dangerously-skip-permissions
     ;;
 

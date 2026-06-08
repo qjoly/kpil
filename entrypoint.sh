@@ -61,13 +61,30 @@ case "$AGENT" in
       echo "" >&2
     fi
 
+    # Claude Code splits its state between two locations:
+    #   - ~/.claude/                — credentials, history, hooks, …
+    #                                 (already persisted via the bind mount)
+    #   - ~/.claude.json            — runtime config; pairs the OAuth token
+    #                                 to a user identity. NOT inside ~/.claude,
+    #                                 so a plain bind mount of ~/.claude alone
+    #                                 forces a re-login on every run.
+    # We stash a copy of .claude.json INSIDE the persisted ~/.claude directory
+    # and shuttle it in on start / out on exit so the OAuth login survives
+    # container teardown.
+    PERSIST_CONFIG="/root/.claude/.claude.json"
+    LIVE_CONFIG="/root/.claude.json"
+    if [ -f "$PERSIST_CONFIG" ] && [ ! -f "$LIVE_CONFIG" ]; then
+      cp "$PERSIST_CONFIG" "$LIVE_CONFIG"
+    fi
+    trap 'cp -f "$LIVE_CONFIG" "$PERSIST_CONFIG" 2>/dev/null || true' EXIT INT TERM
+
     # The container is itself the sandbox (read-only RBAC, no host filesystem
     # outside the bind-mounts, isolated network namespace), so we set
     # IS_SANDBOX=1 to let claude's --dangerously-skip-permissions work even
     # though the in-container UID is root. Without this claude refuses to
     # start with "cannot be used with root/sudo privileges".
     export IS_SANDBOX=1
-    exec claude --dangerously-skip-permissions
+    claude --dangerously-skip-permissions
     ;;
 
   *)

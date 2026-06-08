@@ -16,8 +16,10 @@ jobs:
     name: Build & push Docker image
     runs-on: ubuntu-latest
     permissions:
-      packages: write    # push to ghcr.io
-      id-token: write    # keyless cosign signing (OIDC token)
+      packages: write      # push to ghcr.io
+      id-token: write      # keyless cosign signing (OIDC token)
+      attestations: write  # publish build provenance attestations
+      contents: read
     outputs:
       image-digest: ${{ steps.push.outputs.digest }}
     steps:
@@ -67,6 +69,13 @@ jobs:
           cosign sign --yes \
             ghcr.io/${{ github.repository }}@${{ steps.push.outputs.digest }}
 
+      - name: Generate build provenance attestation (image)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
   # ---------------------------------------------------------------------------
   # 2. Go binaries — cross-compile and publish GitHub Release via GoReleaser
   # ---------------------------------------------------------------------------
@@ -76,6 +85,8 @@ jobs:
     needs: docker           # attach release notes only after image is pushed
     permissions:
       contents: write      # create GitHub release and upload assets
+      id-token: write      # OIDC token for attestations
+      attestations: write  # publish build provenance attestations
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -95,3 +106,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate build provenance attestation (binaries)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt

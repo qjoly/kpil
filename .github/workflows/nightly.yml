@@ -1,0 +1,87 @@
+name: Nightly image rebuild
+
+# Rebuilds the container image from scratch every night so the published
+# image picks up upstream updates that are not pinned in the Dockerfile:
+#   - the node:26-slim base image
+#   - apt security updates
+#   - the gh CLI apt package (stable channel)
+#   - kubectl (latest stable at build time)
+#   - @anthropic-ai/claude-code (npm "latest")
+#   - opencode-ai (npm "latest")
+#
+# Pinned things (Copilot CLI version, build-arg SKILLS) are unaffected.
+# The image is pushed under a rolling "nightly" tag and a date-stamped
+# "nightly-YYYY-MM-DD" tag; the latter is signed and attested so a given
+# nightly build can be referenced and verified after the fact.
+
+on:
+  schedule:
+    # 02:30 UTC every day. Off-the-hour to avoid the GitHub Actions traffic spike.
+    - cron: "30 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    name: Rebuild & push nightly image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write      # push to ghcr.io
+      id-token: write      # keyless cosign signing (OIDC token)
+      attestations: write  # publish build provenance attestations
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            # Rolling pointer always overwritten by the latest nightly.
+            type=raw,value=nightly
+            # Date-stamped, kept forever (great for "give me last Tuesday's image").
+            type=raw,value=nightly-{{date 'YYYY-MM-DD'}}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The whole point of the nightly is to pull fresh upstream layers,
+          # so disable the layer cache and force a base-image re-pull.
+          no-cache: true
+          pull: true
+
+      - name: Sign image
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository }}@${{ steps.push.outputs.digest }}
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

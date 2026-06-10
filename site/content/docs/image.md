@@ -13,6 +13,31 @@ Images are published to [ghcr.io/qjoly/kpil](https://github.com/qjoly/kpil/pkgs/
 | `v1.2.3` | Release tag — immutable |
 | `edge` | Every commit to `main` |
 | `sha-<7chars>` | Every commit to `main` — immutable |
+| `nightly` | Daily rebuild at 02:30 UTC — picks up upstream base, apt, npm |
+| `nightly-YYYY-MM-DD` | Daily rebuild — date-stamped, kept forever |
+
+### Nightly rebuilds
+
+The Dockerfile pulls a few moving pieces at build time that aren't pinned in
+git: the `node:26-slim` base, apt packages (including `gh` and security
+updates), `kubectl` latest stable, and the npm `latest` releases of
+`@anthropic-ai/claude-code` and `opencode-ai`. The `nightly` workflow rebuilds
+the image from scratch every night (`--no-cache --pull`) so those stay current
+without waiting for a code change. Both `nightly` and `nightly-YYYY-MM-DD` are
+signed with cosign and carry a SLSA build provenance attestation, identical to
+release tags.
+
+Pull the freshest image:
+
+```sh
+kpil --image ghcr.io/qjoly/kpil:nightly
+```
+
+Or pin to a specific night:
+
+```sh
+kpil --image ghcr.io/qjoly/kpil:nightly-2026-06-09
+```
 
 ## Platforms
 

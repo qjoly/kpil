@@ -69,6 +69,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Re-generate the SBOM on every nightly so syft picks up the new
+          # claude/opencode versions resolved from npm "latest" at build time.
+          sbom: true
           # The whole point of the nightly is to pull fresh upstream layers,
           # so disable the layer cache and force a base-image re-pull.
           no-cache: true

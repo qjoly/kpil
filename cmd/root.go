@@ -1,17 +1,22 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/qjoly/kpil/internal/container"
 	"github.com/qjoly/kpil/internal/k8s"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // Config holds all the CLI configuration.
@@ -227,12 +232,15 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	// ---- signal handling -----------------------------------------------
+	// First signal triggers graceful cancellation; the second restores the
+	// default handler so an impatient user can always force-exit with ^C^C.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		fmt.Fprintln(os.Stderr, "\nSignal received — stopping container…")
+		fmt.Fprintln(os.Stderr, "\nSignal received — cleaning up…")
 		cancel()
+		signal.Reset(syscall.SIGINT, syscall.SIGTERM)
 	}()
 
 	// ---- Kubernetes client ---------------------------------------------
@@ -307,6 +315,15 @@ func run(cmd *cobra.Command, _ []string) error {
 		}
 		if exists {
 			fmt.Printf("Image %s found locally.\n", cfg.Image)
+			pulled, err := maybePullIfStale(ctx, ctr, cfg.Image)
+			switch {
+			case errors.Is(err, context.Canceled):
+				return nil
+			case err != nil:
+				fmt.Fprintf(os.Stderr, "Warning: could not check for a newer image: %v\n", err)
+			case pulled:
+				fmt.Println("Image updated to the latest registry version.")
+			}
 		} else {
 			fmt.Printf("Image %s not found locally — attempting to pull…\n", cfg.Image)
 			if pullErr := ctr.Pull(ctx, cfg.Image); pullErr != nil {
@@ -368,6 +385,133 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	return nil
+}
+
+// maybePullIfStale compares the locally stored image digest against the
+// remote registry digest. When they differ, the user is prompted (Y/n) and the
+// image is pulled on confirmation.
+//
+// Returns (true, nil) when a new version was pulled, (false, nil) when the
+// image is current, the user declined, the runtime backend doesn't support
+// the lookup, or stdin isn't a TTY (no way to prompt). Registry/inspect
+// errors propagate so the caller can surface a warning.
+func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bool, error) {
+	local, err := ctr.LocalDigest(ctx, img)
+	if err != nil {
+		return false, fmt.Errorf("reading local digest: %w", err)
+	}
+	if local == "" {
+		// Image was built locally or has no registry-bound digest — there's
+		// nothing meaningful to compare against, skip silently.
+		return false, nil
+	}
+	remote, err := ctr.RemoteDigest(ctx, img)
+	if err != nil {
+		return false, fmt.Errorf("reading remote digest: %w", err)
+	}
+	if remote == "" || remote == local {
+		return false, nil
+	}
+
+	fmt.Printf("A newer version of %s is available in the registry.\n", img)
+	fmt.Printf("  local digest:  %s\n", local)
+	fmt.Printf("  remote digest: %s\n", remote)
+	printAgentVersionDiff(ctx, img, local, remote)
+
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Println("  Stdin is not a TTY — keeping the local image. Re-run with --pull to update.")
+		return false, nil
+	}
+
+	fmt.Print("Pull the latest version now? [Y/n]: ")
+	line, err := readLineCtx(ctx, os.Stdin)
+	if err != nil {
+		if ctx.Err() != nil {
+			// Caller (signal handler) already printed a cleanup message.
+			return false, ctx.Err()
+		}
+		return false, fmt.Errorf("reading confirmation: %w", err)
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	if answer != "" && answer != "y" && answer != "yes" {
+		fmt.Println("Keeping the local image.")
+		return false, nil
+	}
+
+	if err := ctr.Pull(ctx, img); err != nil {
+		return false, fmt.Errorf("pulling latest image: %w", err)
+	}
+	return true, nil
+}
+
+// readLineCtx reads a single line from r, returning early with ctx.Err() if
+// ctx is cancelled while we're still blocked on input. The reader goroutine
+// is leaked (still pinned on the syscall), but the process is on its way out
+// when ctx fires, so the leak is bounded.
+func readLineCtx(ctx context.Context, r io.Reader) (string, error) {
+	type result struct {
+		line string
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		line, err := bufio.NewReader(r).ReadString('\n')
+		ch <- result{line, err}
+	}()
+	select {
+	case <-ctx.Done():
+		fmt.Println()
+		return "", ctx.Err()
+	case res := <-ch:
+		return res.line, res.err
+	}
+}
+
+// printAgentVersionDiff fetches the per-agent version metadata baked into
+// both the local and remote image (SBOM for claude/opencode, OCI label for
+// copilot) and prints a table when at least one side reports a version.
+// Failures are silent: the digest mismatch is already informative on its own.
+func printAgentVersionDiff(ctx context.Context, img, localDigest, remoteDigest string) {
+	vCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	localVersions := container.FetchAgentVersions(vCtx, img, localDigest)
+	remoteVersions := container.FetchAgentVersions(vCtx, img, remoteDigest)
+	if len(localVersions) == 0 && len(remoteVersions) == 0 {
+		return
+	}
+
+	agents := []string{"claude", "opencode", "copilot"}
+	any := false
+	for _, a := range agents {
+		if localVersions[a] != "" || remoteVersions[a] != "" {
+			any = true
+			break
+		}
+	}
+	if !any {
+		return
+	}
+
+	fmt.Println("  baked-in agent versions:")
+	for _, a := range agents {
+		lv, rv := localVersions[a], remoteVersions[a]
+		if lv == "" && rv == "" {
+			continue
+		}
+		marker := "  "
+		if lv != rv && lv != "" && rv != "" {
+			marker = "→ "
+		}
+		fmt.Printf("    %s%-8s  %s  →  %s\n", marker, a, fallback(lv, "?"), fallback(rv, "?"))
+	}
+}
+
+func fallback(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }
 
 // cleanupRBAC deletes RBAC resources based on what was actually provisioned.

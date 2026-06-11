@@ -58,6 +58,35 @@ func (a *apiClient) ImageExists(ctx context.Context, img string) (bool, error) {
 	return false, fmt.Errorf("inspecting image %s: %w", img, err)
 }
 
+// LocalDigest returns the manifest digest of the locally stored image, as
+// recorded in its RepoDigests. Returns "" if the image was built locally and
+// has no associated registry digest.
+func (a *apiClient) LocalDigest(ctx context.Context, img string) (string, error) {
+	info, _, err := a.cli.ImageInspectWithRaw(ctx, img)
+	if err != nil {
+		if client.IsErrNotFound(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("inspecting image %s: %w", img, err)
+	}
+	return digestForImage(img, info.RepoDigests), nil
+}
+
+// RemoteDigest contacts the registry and returns the current manifest digest
+// for img without pulling any layers. Falls back to a direct HTTP query when
+// the daemon's DistributionInspect endpoint fails (e.g. older daemons or
+// rootless podman setups that block egress from the daemon).
+func (a *apiClient) RemoteDigest(ctx context.Context, img string) (string, error) {
+	d, err := a.cli.DistributionInspect(ctx, img, "")
+	if err == nil {
+		return string(d.Descriptor.Digest), nil
+	}
+	if httpDigest, httpErr := fetchRegistryDigest(ctx, img); httpErr == nil && httpDigest != "" {
+		return httpDigest, nil
+	}
+	return "", fmt.Errorf("inspecting remote image %s: %w", img, err)
+}
+
 // Pull pulls the image from a remote registry, streaming progress to stdout.
 func (a *apiClient) Pull(ctx context.Context, img string) error {
 	fmt.Printf("  Pulling image %s…\n", img)

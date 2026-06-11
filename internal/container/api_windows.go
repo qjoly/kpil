@@ -22,6 +22,14 @@ func (a *apiClient) ImageExists(_ context.Context, _ string) (bool, error) {
 	return false, fmt.Errorf("not supported on Windows")
 }
 
+func (a *apiClient) LocalDigest(_ context.Context, _ string) (string, error) {
+	return "", fmt.Errorf("not supported on Windows")
+}
+
+func (a *apiClient) RemoteDigest(_ context.Context, _ string) (string, error) {
+	return "", fmt.Errorf("not supported on Windows")
+}
+
 func (a *apiClient) Pull(_ context.Context, _ string) error {
 	return fmt.Errorf("not supported on Windows")
 }

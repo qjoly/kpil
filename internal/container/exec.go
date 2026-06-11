@@ -38,22 +38,41 @@ func (e *execClient) ImageExists(_ context.Context, img string) (bool, error) {
 }
 
 // LocalDigest returns the manifest digest recorded in RepoDigests for the
-// locally stored image. Returns "" if the image was built locally and has no
-// associated registry digest.
-func (e *execClient) LocalDigest(_ context.Context, img string) (string, error) {
-	cmd := exec.Command(e.runtime, "image", "inspect", "--format", "{{json .RepoDigests}}", img)
+// locally stored image. Returns "" if the image is not present locally or
+// was built locally and has no associated registry digest.
+//
+// We distinguish "image not present" (a benign skip — the prior ImageExists
+// branch races could remove the image between calls) from real backend
+// failures (daemon down, socket permission denied, malformed runtime
+// output) by inspecting the CLI's stderr: docker/podman both prefix
+// not-found errors with literal "No such image" / "image not known".
+func (e *execClient) LocalDigest(ctx context.Context, img string) (string, error) {
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, e.runtime, "image", "inspect", "--format", "{{json .RepoDigests}}", img)
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() != 0 {
+		stderrText := stderr.String()
+		if isImageNotFoundStderr(stderrText) {
 			return "", nil
 		}
-		return "", fmt.Errorf("inspecting image %s: %w", img, err)
+		return "", fmt.Errorf("inspecting image %s: %w (stderr: %s)", img, err, strings.TrimSpace(stderrText))
 	}
 	var repoDigests []string
 	if err := json.Unmarshal(bytes.TrimSpace(out), &repoDigests); err != nil {
 		return "", fmt.Errorf("parsing repo digests for %s: %w", img, err)
 	}
 	return digestForImage(img, repoDigests), nil
+}
+
+// isImageNotFoundStderr matches the stable substrings docker and podman emit
+// when an image is absent. Kept as a free function so tests can pin the
+// exact wording.
+func isImageNotFoundStderr(s string) bool {
+	s = strings.ToLower(s)
+	return strings.Contains(s, "no such image") ||
+		strings.Contains(s, "image not known") ||
+		strings.Contains(s, "manifest unknown")
 }
 
 // RemoteDigest fetches the current manifest digest for img directly from its

@@ -492,6 +492,24 @@ func printAgentVersionDiff(ctx context.Context, img, localDigest, remoteDigest s
 
 	localVersions := container.FetchAgentVersions(vCtx, img, localDigest)
 	remoteVersions := container.FetchAgentVersions(vCtx, img, remoteDigest)
+
+	// Older locally-stored images may predate kpil's SBOM-enabled CI, so the
+	// registry lookup returns no SBOM for them. Fall back to running the
+	// image briefly and parsing each agent's --version output so the user
+	// sees a useful "before" column even on pre-SBOM images.
+	if localVersions["claude"] == "" || localVersions["opencode"] == "" || localVersions["copilot"] == "" {
+		if extra := container.LocalAgentVersions(vCtx, img); extra != nil {
+			if localVersions == nil {
+				localVersions = map[string]string{}
+			}
+			for k, v := range extra {
+				if localVersions[k] == "" {
+					localVersions[k] = v
+				}
+			}
+		}
+	}
+
 	if len(localVersions) == 0 && len(remoteVersions) == 0 {
 		return
 	}

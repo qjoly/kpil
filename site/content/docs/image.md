@@ -53,6 +53,54 @@ The image is built for `linux/amd64` and `linux/arm64`.
 
 The entrypoint dispatches to the right agent at runtime based on the `AGENT` environment variable set by kpil (mirroring `--agent`).
 
+## Startup update check
+
+When you run `kpil` against an image already present locally (no `--pull`, no
+`--build`), kpil queries the registry for the current manifest digest and
+compares it against the local image. If they differ, kpil also reads the
+image's baked-in agent versions from the registry without pulling any layers
+— the SBOM attached by buildx for `claude` / `opencode`, and the OCI label
+for `copilot` — and prints both sides side-by-side before prompting:
+
+```
+Image ghcr.io/qjoly/kpil:nightly found locally.
+A newer version of ghcr.io/qjoly/kpil:nightly is available in the registry.
+  local digest:  sha256:b79290…
+  remote digest: sha256:443df4…
+  baked-in agent versions:
+  → claude    2.0.4   →  2.1.173
+      opencode  1.16.0  →  1.17.3
+      copilot   1.0.35  →  1.0.35
+Pull the latest version now? [Y/n]:
+```
+
+Answer `Y` (or just Enter) to pull the new image in place; answer `n` to keep
+the local version. `Ctrl+C` cancels both the prompt and the run.
+
+A locally-built image (`--build`) carries no registry-bound digest, so the
+check skips silently. Same goes for images whose registry returns no digest
+header.
+
+### Disabling the check
+
+Set `KPIL_SKIP_UPDATE_CHECK=1` in the environment to skip the check
+entirely — useful in CI, offline environments, or any flow where the
+prompt would block:
+
+```sh
+export KPIL_SKIP_UPDATE_CHECK=1
+kpil
+```
+
+Equivalent on a single invocation:
+
+```sh
+KPIL_SKIP_UPDATE_CHECK=1 kpil
+```
+
+The check is unaffected when `--pull` or `--build` is set: those flags
+already force a specific image state.
+
 ## Signature verification
 
 Every image is signed with [cosign keyless signing](https://docs.sigstore.dev/cosign/signing/overview/) via GitHub Actions OIDC. The CLI verifies the signature automatically before starting the container.

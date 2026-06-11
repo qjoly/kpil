@@ -393,9 +393,13 @@ func run(cmd *cobra.Command, _ []string) error {
 //
 // Returns (true, nil) when a new version was pulled, (false, nil) when the
 // image is current, the user declined, the runtime backend doesn't support
-// the lookup, or stdin isn't a TTY (no way to prompt). Registry/inspect
-// errors propagate so the caller can surface a warning.
+// the lookup, the KPIL_SKIP_UPDATE_CHECK env var is set, or stdin isn't a
+// TTY (no way to prompt). Registry/inspect errors propagate so the caller
+// can surface a warning.
 func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bool, error) {
+	if skipUpdateCheck() {
+		return false, nil
+	}
 	local, err := ctr.LocalDigest(ctx, img)
 	if err != nil {
 		return false, fmt.Errorf("reading local digest: %w", err)
@@ -442,6 +446,17 @@ func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bo
 		return false, fmt.Errorf("pulling latest image: %w", err)
 	}
 	return true, nil
+}
+
+// skipUpdateCheck reports whether the startup staleness check should be
+// suppressed. Set KPIL_SKIP_UPDATE_CHECK to any non-empty value other than
+// "0", "false", or "no" (case-insensitive) to opt out.
+func skipUpdateCheck() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("KPIL_SKIP_UPDATE_CHECK")))
+	if v == "" {
+		return false
+	}
+	return v != "0" && v != "false" && v != "no"
 }
 
 // readLineCtx reads a single line from r, returning early with ctx.Err() if

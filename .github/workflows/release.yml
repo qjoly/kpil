@@ -61,6 +61,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Attach an SPDX SBOM so kpil's startup staleness check can read
+          # the baked-in claude/opencode versions without pulling the image.
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

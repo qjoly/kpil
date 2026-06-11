@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // RunConfig holds what the container runner needs to start the container.
@@ -31,6 +32,15 @@ type Client interface {
 
 	// ImageExists reports whether the image is present in the local store.
 	ImageExists(ctx context.Context, image string) (bool, error)
+
+	// LocalDigest returns the content digest (e.g. "sha256:…") of the locally
+	// stored image. Returns an empty string if the image has no associated
+	// digest (e.g. it was built locally and never pushed/pulled).
+	LocalDigest(ctx context.Context, image string) (string, error)
+
+	// RemoteDigest fetches the manifest digest of the image from its remote
+	// registry without pulling any layers.
+	RemoteDigest(ctx context.Context, image string) (string, error)
 
 	// Pull pulls the image from a remote registry.
 	Pull(ctx context.Context, image string) error
@@ -146,6 +156,32 @@ func canDial(path string) bool {
 	}
 	conn.Close()
 	return true
+}
+
+// digestForImage extracts the manifest digest matching img from a list of
+// repo digests of the form "repo@sha256:…". It first looks for the entry whose
+// repo prefix matches img (so we ignore digests for unrelated tags pulled into
+// the same image ID); if none matches, the first available digest is returned.
+// Returns "" when the list is empty (image built locally, never pushed/pulled).
+func digestForImage(img string, repoDigests []string) string {
+	repoPrefix := img
+	if i := strings.Index(repoPrefix, "@"); i >= 0 {
+		repoPrefix = repoPrefix[:i]
+	}
+	if i := strings.LastIndex(repoPrefix, ":"); i >= 0 && i > strings.LastIndex(repoPrefix, "/") {
+		repoPrefix = repoPrefix[:i]
+	}
+	for _, rd := range repoDigests {
+		if strings.HasPrefix(rd, repoPrefix+"@") {
+			return strings.SplitN(rd, "@", 2)[1]
+		}
+	}
+	if len(repoDigests) > 0 {
+		if parts := strings.SplitN(repoDigests[0], "@", 2); len(parts) == 2 {
+			return parts[1]
+		}
+	}
+	return ""
 }
 
 // detectRuntimeCLI validates / auto-detects the CLI binary name.

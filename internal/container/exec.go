@@ -1,7 +1,9 @@
 package container
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -33,6 +35,34 @@ func (e *execClient) ImageExists(_ context.Context, img string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("inspecting image %s: %w", img, err)
+}
+
+// LocalDigest returns the manifest digest recorded in RepoDigests for the
+// locally stored image. Returns "" if the image was built locally and has no
+// associated registry digest.
+func (e *execClient) LocalDigest(_ context.Context, img string) (string, error) {
+	cmd := exec.Command(e.runtime, "image", "inspect", "--format", "{{json .RepoDigests}}", img)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() != 0 {
+			return "", nil
+		}
+		return "", fmt.Errorf("inspecting image %s: %w", img, err)
+	}
+	var repoDigests []string
+	if err := json.Unmarshal(bytes.TrimSpace(out), &repoDigests); err != nil {
+		return "", fmt.Errorf("parsing repo digests for %s: %w", img, err)
+	}
+	return digestForImage(img, repoDigests), nil
+}
+
+// RemoteDigest fetches the current manifest digest for img directly from its
+// registry over HTTP. The runtime CLIs do not reliably surface the top-level
+// index/list digest for multi-arch tags, whereas the Docker-Content-Digest
+// response header always does — and it matches what gets recorded in
+// RepoDigests after a pull.
+func (e *execClient) RemoteDigest(ctx context.Context, img string) (string, error) {
+	return fetchRegistryDigest(ctx, img)
 }
 
 // Pull pulls the image from a remote registry.

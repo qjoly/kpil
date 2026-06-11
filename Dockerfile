@@ -127,18 +127,25 @@ RUN --mount=type=bind,source=.,target=/build-ctx \
 # TARGETARCH is intentionally avoided: BuildKit's native cross-compilation
 # mode sets it to the *build host* arch rather than the target arch.
 # ---------------------------------------------------------------------------
+ARG COPILOT_CLI_VERSION=1.0.35
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
          amd64) CLI_ARCH="x64" ;; \
          arm64) CLI_ARCH="arm64" ;; \
          *)     CLI_ARCH="x64" ;; \
        esac \
-    && echo "  Downloading GitHub Copilot CLI (linux-${CLI_ARCH})…" \
+    && echo "  Downloading GitHub Copilot CLI v${COPILOT_CLI_VERSION} (linux-${CLI_ARCH})…" \
     && curl -fsSL \
-        "https://github.com/github/copilot-cli/releases/download/v1.0.35/copilot-linux-${CLI_ARCH}.tar.gz" \
+        "https://github.com/github/copilot-cli/releases/download/v${COPILOT_CLI_VERSION}/copilot-linux-${CLI_ARCH}.tar.gz" \
         | tar -xz -C /usr/local/bin copilot \
     && chmod +x /usr/local/bin/copilot \
     && echo "  Installed to /usr/local/bin/copilot"
+
+# Copilot CLI is a raw binary, not an npm package — it does not appear in the
+# image's auto-generated SBOM. Expose its pinned version as an OCI label so
+# `kpil`'s startup staleness check can read it from the registry config blob
+# without pulling any layers.
+LABEL org.kpil.copilot.version="${COPILOT_CLI_VERSION}"
 
 # ---------------------------------------------------------------------------
 # Claude Code — Anthropic's official coding agent CLI, installed globally via

@@ -29,6 +29,17 @@ kpil [flags]
 | `-i`, `--interactive` | `false` | Prompt for runtime parameters before launching |
 | `--skill` | — | Bake an agent skill into the image at build time (requires `--build`) |
 
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `GH_TOKEN` | GitHub PAT with the `copilot` scope. Required with `--agent copilot`. |
+| `ANTHROPIC_API_KEY` | Forwarded to the container. Optional with `--agent claude` (subscription login is preferred); accepted by `--agent opencode`. |
+| `OPENAI_API_KEY` | Forwarded to the container for `--agent opencode`. |
+| `KPIL_SKIP_UPDATE_CHECK` | When set to a non-empty truthy value (`1`, `true`, `yes`, …), disable the [startup update check](image.md#startup-update-check) and its Y/n prompt. |
+| `KUBECONFIG` | Used as the default for `--kubeconfig`. |
+| `DOCKER_HOST` | Honored by the runtime auto-detection (must be a `unix://` socket). |
+
 ## Examples
 
 ```sh
@@ -58,4 +69,7 @@ GH_TOKEN=$GH_TOKEN kpil --build
 
 # Interactive setup
 kpil -i
+
+# Skip the startup "image is newer" prompt (CI, offline use)
+KPIL_SKIP_UPDATE_CHECK=1 kpil
 ```

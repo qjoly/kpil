@@ -152,19 +152,37 @@ func fetchConfigLabels(ctx context.Context, registry, repo, digest, token string
 }
 
 // fetchSBOMPackageVersions returns a map of npm-style package name → version
-// extracted from the SPDX SBOM that buildx attaches as an OCI referrer of
-// digest. Returns an empty (non-nil) map when no SBOM is attached.
+// extracted from the SPDX SBOM attached to the image at digest.
+//
+// Buildx with `sbom: true` does not push the SBOM via the OCI Referrers API
+// (which GHCR doesn't fully support — it 303-redirects). Instead, buildx
+// embeds an "attestation-manifest" inside the image index, one per platform,
+// referencing back to the platform image via the
+// `vnd.docker.reference.digest` annotation. Each attestation-manifest's
+// layers are in-toto statements; the SPDX SBOM lives in the layer whose
+// `in-toto.io/predicate-type` annotation is `https://spdx.dev/Document`,
+// with the SPDX document carried inline in the statement's `predicate`
+// field.
+//
+// We optimistically try the OCI Referrers API first (works on registries
+// that support it) and fall back to scanning the image index for the
+// attestation-manifest.
 func fetchSBOMPackageVersions(ctx context.Context, registry, repo, digest, token string) (map[string]string, error) {
-	descriptors, err := fetchReferrers(ctx, registry, repo, digest, token)
-	if err != nil {
-		return nil, err
+	if out := tryReferrerSBOM(ctx, registry, repo, digest, token); len(out) > 0 {
+		return out, nil
 	}
+	return fetchAttestationSBOM(ctx, registry, repo, digest, token)
+}
 
+// tryReferrerSBOM probes the OCI Referrers API. Returns nil silently when
+// the registry doesn't expose referrers or none are SBOMs.
+func tryReferrerSBOM(ctx context.Context, registry, repo, digest, token string) map[string]string {
+	descriptors, err := fetchReferrers(ctx, registry, repo, digest, token)
+	if err != nil || len(descriptors) == 0 {
+		return nil
+	}
 	out := map[string]string{}
 	for _, ref := range descriptors {
-		// Buildx attaches the SBOM as an OCI image manifest whose layers carry
-		// the SPDX JSON. The referrer's `artifactType` is set on the manifest
-		// itself; the SPDX blob is the first layer.
 		sbomManifest, _, err := fetchManifest(ctx, registry, repo, ref.Digest, token)
 		if err != nil {
 			continue
@@ -180,47 +198,99 @@ func fetchSBOMPackageVersions(ctx context.Context, registry, repo, digest, token
 			continue
 		}
 		if !isSBOMArtifactType(ref.ArtifactType) && !isSBOMArtifactType(mf.ArtifactType) {
-			// Could be a provenance attestation or some other referrer; skip.
 			continue
 		}
 		for _, layer := range mf.Layers {
 			if !isSPDXMediaType(layer.MediaType) {
 				continue
 			}
-			blob, err := fetchBlob(ctx, registry, repo, layer.Digest, token)
-			if err != nil {
-				continue
-			}
-			extractSPDXVersions(blob, out)
-		}
-	}
-
-	// For multi-arch images the top-level index may have no referrers — the
-	// SBOM is attached per platform. Fall back to the linux manifest.
-	if len(out) == 0 {
-		idxBody, mediaType, err := fetchManifest(ctx, registry, repo, digest, token)
-		if err == nil && isIndexMediaType(mediaType) {
-			var idx struct {
-				Manifests []struct {
-					Digest   string `json:"digest"`
-					Platform struct {
-						OS string `json:"os"`
-					} `json:"platform"`
-				} `json:"manifests"`
-			}
-			if err := json.Unmarshal(idxBody, &idx); err == nil {
-				for _, m := range idx.Manifests {
-					if m.Platform.OS != "linux" {
-						continue
-					}
-					if sub, err := fetchSBOMPackageVersions(ctx, registry, repo, m.Digest, token); err == nil && len(sub) > 0 {
-						return sub, nil
-					}
-				}
+			if blob, err := fetchBlob(ctx, registry, repo, layer.Digest, token); err == nil {
+				extractSPDXVersions(blob, out)
 			}
 		}
 	}
+	return out
+}
 
+// fetchAttestationSBOM extracts the SPDX SBOM that buildx embeds inside the
+// image index as an attestation-manifest (in-toto statement wrapping SPDX).
+func fetchAttestationSBOM(ctx context.Context, registry, repo, digest, token string) (map[string]string, error) {
+	indexBody, mediaType, err := fetchManifest(ctx, registry, repo, digest, token)
+	if err != nil {
+		return nil, err
+	}
+	if !isIndexMediaType(mediaType) {
+		// A single-arch image with no index: buildx attaches no SBOM here.
+		return nil, nil
+	}
+
+	var idx struct {
+		Manifests []struct {
+			Digest      string            `json:"digest"`
+			Annotations map[string]string `json:"annotations"`
+			Platform    struct {
+				OS string `json:"os"`
+			} `json:"platform"`
+		} `json:"manifests"`
+	}
+	if err := json.Unmarshal(indexBody, &idx); err != nil {
+		return nil, fmt.Errorf("parsing image index: %w", err)
+	}
+
+	var linuxImageDigest string
+	for _, m := range idx.Manifests {
+		if m.Platform.OS == "linux" && m.Annotations["vnd.docker.reference.type"] == "" {
+			linuxImageDigest = m.Digest
+			break
+		}
+	}
+	if linuxImageDigest == "" {
+		return nil, nil
+	}
+	var attestDigest string
+	for _, m := range idx.Manifests {
+		if m.Annotations["vnd.docker.reference.type"] == "attestation-manifest" &&
+			m.Annotations["vnd.docker.reference.digest"] == linuxImageDigest {
+			attestDigest = m.Digest
+			break
+		}
+	}
+	if attestDigest == "" {
+		return nil, nil
+	}
+
+	attestBody, _, err := fetchManifest(ctx, registry, repo, attestDigest, token)
+	if err != nil {
+		return nil, err
+	}
+	var attest struct {
+		Layers []struct {
+			MediaType   string            `json:"mediaType"`
+			Digest      string            `json:"digest"`
+			Annotations map[string]string `json:"annotations"`
+		} `json:"layers"`
+	}
+	if err := json.Unmarshal(attestBody, &attest); err != nil {
+		return nil, fmt.Errorf("parsing attestation manifest: %w", err)
+	}
+
+	out := map[string]string{}
+	for _, layer := range attest.Layers {
+		if layer.Annotations["in-toto.io/predicate-type"] != "https://spdx.dev/Document" {
+			continue
+		}
+		blob, err := fetchBlob(ctx, registry, repo, layer.Digest, token)
+		if err != nil {
+			continue
+		}
+		var stmt struct {
+			Predicate json.RawMessage `json:"predicate"`
+		}
+		if err := json.Unmarshal(blob, &stmt); err != nil {
+			continue
+		}
+		extractSPDXVersions(stmt.Predicate, out)
+	}
 	return out, nil
 }
 

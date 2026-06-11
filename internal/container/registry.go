@@ -134,11 +134,10 @@ func fetchBearerToken(ctx context.Context, authHeader, repo string) (string, err
 	if s := params["service"]; s != "" {
 		q.Set("service", s)
 	}
-	scope := params["scope"]
-	if scope == "" {
-		scope = "repository:" + repo + ":pull"
-	}
-	q.Set("scope", scope)
+	// The scope param in the challenge is often a placeholder (GHCR returns
+	// "repository:user/image:pull"). Always pin it to the repo we actually
+	// want to read so the returned token authorizes our request.
+	q.Set("scope", "repository:"+repo+":pull")
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := http.DefaultClient.Do(req)

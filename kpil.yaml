@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   name: kpil
 spec:
-  version: "v0.0.2"
+  version: "v0.1.1"
   homepage: https://github.com/qjoly/kpil
   shortDescription: Run Copilot CLI with a scoped kubeconfig
   description: |
@@ -22,8 +22,8 @@ spec:
       matchLabels:
         os: darwin
         arch: arm64
-    uri: https://github.com/qjoly/kpil/releases/download/v0.0.2/kpil_0.0.2_darwin_arm64.tar.gz
-    sha256: "938d25e27cf1e6bda1bbe77c52a9edc4deed34b3ef6aa0ca0bf7352f07a1a2c0"
+    uri: https://github.com/qjoly/kpil/releases/download/v0.1.1/kpil_0.1.1_darwin_arm64.tar.gz
+    sha256: "2a7ef4a040ea874b507fc76dfecfc502a1760a4f90de3ce6e1684d9e7fbe5d39"
     files:
     - from: kpil
       to: .
@@ -35,8 +35,8 @@ spec:
       matchLabels:
         os: darwin
         arch: amd64
-    uri: https://github.com/qjoly/kpil/releases/download/v0.0.2/kpil_0.0.2_darwin_amd64.tar.gz
-    sha256: "c3a8386717721d83e4a797a9f374d4cf1cabde9bc96255d46295a432f0a1e8ef"
+    uri: https://github.com/qjoly/kpil/releases/download/v0.1.1/kpil_0.1.1_darwin_amd64.tar.gz
+    sha256: "1a7a3497c10803c915c4f9f810932a597801356537625ed3508e7d331e9b6a3f"
     files:
     - from: kpil
       to: .
@@ -48,8 +48,8 @@ spec:
       matchLabels:
         os: linux
         arch: arm64
-    uri: https://github.com/qjoly/kpil/releases/download/v0.0.2/kpil_0.0.2_linux_arm64.tar.gz
-    sha256: "9e262f97bc1ff321ed601657e8aed189aa33aff99337b380301698dc860086e3"
+    uri: https://github.com/qjoly/kpil/releases/download/v0.1.1/kpil_0.1.1_linux_arm64.tar.gz
+    sha256: "8c8bfb7c56d19525529fa0a214c58bfcc4551841040073316c1c9e256a6c66d7"
     files:
     - from: kpil
       to: .
@@ -61,8 +61,8 @@ spec:
       matchLabels:
         os: linux
         arch: amd64
-    uri: https://github.com/qjoly/kpil/releases/download/v0.0.2/kpil_0.0.2_linux_amd64.tar.gz
-    sha256: "c7e82f7a6c52f3bb15255e15561185c2ed89eeca5ab53a96b8f4f391430c6415"
+    uri: https://github.com/qjoly/kpil/releases/download/v0.1.1/kpil_0.1.1_linux_amd64.tar.gz
+    sha256: "020f5e63f83f006f18ba73d8b70d8f84041d94843ebbcbf6b7809bff006add61"
     files:
     - from: kpil
       to: .
@@ -74,8 +74,8 @@ spec:
       matchLabels:
         os: windows
         arch: amd64
-    uri: https://github.com/qjoly/kpil/releases/download/v0.0.2/kpil_0.0.2_windows_amd64.zip
-    sha256: "c1dac72c4e44497993f76b9e4616692c204329f91a32b7d68dd5b8815e8c112b"
+    uri: https://github.com/qjoly/kpil/releases/download/v0.1.1/kpil_0.1.1_windows_amd64.zip
+    sha256: "50ef0a8c4769938d46ba921e9f5fbeba47cb027ed59f9bbae0e6ff3f4e06677d"
     files:
     - from: kpil.exe
       to: .

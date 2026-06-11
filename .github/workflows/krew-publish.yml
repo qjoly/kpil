@@ -1,0 +1,29 @@
+name: Publish to krew-index
+
+# Manually re-trigger the krew-release-bot for an already-published release.
+# Useful when the .krew.yaml template was added after a tag was cut, or to
+# resubmit if a previous PR was closed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.1.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  krew:
+    name: Update krew-index for ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Update plugin in krew-index
+        uses: rajatjindal/krew-release-bot@v0.0.51
+        with:
+          krew_plugin_release_tag: ${{ inputs.tag }}

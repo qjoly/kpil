@@ -1,3 +1,6 @@
 [submodule "site/themes/hextra"]
 	path = site/themes/hextra
 	url = https://github.com/imfing/hextra
+[submodule "site/themes/hextra-neobrutalism"]
+	path = site/themes/hextra-neobrutalism
+	url = https://github.com/qjoly/hextra-neobrutalism.git

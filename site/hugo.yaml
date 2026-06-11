@@ -1,7 +1,9 @@
 baseURL: https://qjoly.github.io/kpil/
 languageCode: en-us
 title: kpil
-theme: hextra
+theme:
+  - hextra-neobrutalism
+  - hextra
 
 enableRobotsTXT: true
 enableGitInfo: true

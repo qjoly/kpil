@@ -114,3 +114,19 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+
+  # ---------------------------------------------------------------------------
+  # 3. Krew index — auto-open a PR against kubernetes-sigs/krew-index
+  # ---------------------------------------------------------------------------
+  krew:
+    name: Update krew-index
+    runs-on: ubuntu-latest
+    needs: goreleaser   # release must exist before the bot can fetch assets
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Update plugin in krew-index
+        uses: rajatjindal/krew-release-bot@v0.0.51

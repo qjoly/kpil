@@ -1,0 +1,23 @@
+{{- /*
+  latest-release — outputs the tag of the latest GitHub release.
+
+  Usage: {{< latest-release repo="qjoly/kpil" >}}
+  Defaults repo to qjoly/kpil. Falls back to "latest" on API error so the
+  build never breaks if rate-limited.
+*/ -}}
+{{- $repo := .Get "repo" | default "qjoly/kpil" -}}
+{{- $url := printf "https://api.github.com/repos/%s/releases/latest" $repo -}}
+{{- $opts := dict "headers" (dict "Accept" "application/vnd.github+json") -}}
+{{- with try (resources.GetRemote $url $opts) -}}
+  {{- with .Err -}}
+    {{- warnf "latest-release: %s" . -}}latest
+  {{- else with .Value -}}
+    {{- with try (. | transform.Unmarshal) -}}
+      {{- with .Err -}}
+        {{- warnf "latest-release: unmarshal %s" . -}}latest
+      {{- else with .Value -}}
+        {{- .tag_name -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}

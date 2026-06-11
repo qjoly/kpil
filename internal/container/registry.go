@@ -70,6 +70,17 @@ func manifestHead(ctx context.Context, url, bearer string) (string, error) {
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", &authChallenge{header: resp.Header.Get("Www-Authenticate")}
 	}
+	if resp.StatusCode == http.StatusNotFound {
+		// The tag isn't reachable at this registry. Two main shapes:
+		//   1. A genuine 404 (tag deleted, name typo).
+		//   2. parseImageRef misrouting a single-label hostname to Docker Hub
+		//      because the docker convention requires a dot, colon, or
+		//      "localhost" in the first segment to recognize a registry.
+		// In both cases we'd rather skip the staleness check silently than
+		// scream "could not check for a newer image" on every kpil startup
+		// — the user pulled the image successfully, that's enough.
+		return "", nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("registry returned %s for %s", resp.Status, url)
 	}

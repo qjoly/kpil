@@ -12,6 +12,13 @@ import (
 // stored image by running it briefly with a no-op entrypoint and parsing the
 // `--version` output of each agent binary.
 //
+// preferredRuntime should be the same runtime kpil chose elsewhere (the
+// --runtime flag, or "" to auto-detect). Threading it through avoids the
+// case where the user passes --runtime podman but the host also has a
+// docker binary earlier in PATH — without the preference, this probe
+// would run against a different runtime than the image was pulled into
+// and silently come back empty.
+//
 // This is the fallback for the on-startup version diff when the local image
 // has no SBOM attached (e.g. it was pulled before kpil's CI started
 // publishing SBOMs, or it was built with `--build`).
@@ -19,8 +26,8 @@ import (
 // Returns an empty map if no runtime CLI is available or the container
 // failed to start — silent failure is fine because the caller already has
 // the digest diff to show.
-func LocalAgentVersions(ctx context.Context, img string) map[string]string {
-	rt, err := detectRuntimeCLI("")
+func LocalAgentVersions(ctx context.Context, preferredRuntime, img string) map[string]string {
+	rt, err := detectRuntimeCLI(preferredRuntime)
 	if err != nil {
 		return nil
 	}

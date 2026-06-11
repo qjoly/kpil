@@ -159,10 +159,12 @@ func canDial(path string) bool {
 }
 
 // digestForImage extracts the manifest digest matching img from a list of
-// repo digests of the form "repo@sha256:…". It first looks for the entry whose
-// repo prefix matches img (so we ignore digests for unrelated tags pulled into
-// the same image ID); if none matches, the first available digest is returned.
-// Returns "" when the list is empty (image built locally, never pushed/pulled).
+// repo digests of the form "repo@sha256:…". It looks for the entry whose
+// repo prefix matches img so we ignore digests for unrelated repos pulled
+// into the same image ID (a `docker tag` that points two repos at the same
+// content would otherwise let us hand back the wrong registry's digest).
+// Returns "" when no entry matches — the caller treats that as "unknown
+// local digest, skip the staleness check silently".
 func digestForImage(img string, repoDigests []string) string {
 	repoPrefix := img
 	if i := strings.Index(repoPrefix, "@"); i >= 0 {
@@ -174,11 +176,6 @@ func digestForImage(img string, repoDigests []string) string {
 	for _, rd := range repoDigests {
 		if strings.HasPrefix(rd, repoPrefix+"@") {
 			return strings.SplitN(rd, "@", 2)[1]
-		}
-	}
-	if len(repoDigests) > 0 {
-		if parts := strings.SplitN(repoDigests[0], "@", 2); len(parts) == 2 {
-			return parts[1]
 		}
 	}
 	return ""

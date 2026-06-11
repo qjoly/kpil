@@ -233,15 +233,23 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	// ---- signal handling -----------------------------------------------
-	// First signal triggers graceful cancellation; the second restores the
-	// default handler so an impatient user can always force-exit with ^C^C.
-	sigCh := make(chan os.Signal, 1)
+	// First signal cancels the context so the rest of the program can wind
+	// down through its deferred cleanup (RBAC removal, kubeconfig delete).
+	// A second signal force-exits with a warning that those defers were not
+	// allowed to finish — we explicitly do NOT use signal.Reset on the first
+	// signal because that lets a follow-up ^C kill the process via the
+	// default handler, silently skipping the cleanup that protects against
+	// stale ServiceAccount tokens on disk.
+	sigCh := make(chan os.Signal, 2)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sigCh
-		fmt.Fprintln(os.Stderr, "\nSignal received — cleaning up…")
+		sig := <-sigCh
+		fmt.Fprintf(os.Stderr, "\n%s received — cleaning up… (^C again to abort)\n", sig)
 		cancel()
-		signal.Reset(syscall.SIGINT, syscall.SIGTERM)
+		sig = <-sigCh
+		fmt.Fprintf(os.Stderr, "\n%s received again — aborting cleanup. RBAC objects and %s may remain; remove with:\n  kubectl delete clusterrolebinding,clusterrole,sa -l app=%s -A\n  rm -f %s\n",
+			sig, cfg.OutKubeconfig, cfg.SAName, cfg.OutKubeconfig)
+		os.Exit(130)
 	}()
 
 	// ---- Kubernetes client ---------------------------------------------
@@ -316,7 +324,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		}
 		if exists {
 			fmt.Printf("Image %s found locally.\n", cfg.Image)
-			pulled, err := maybePullIfStale(ctx, ctr, cfg.Image)
+			pulled, err := maybePullIfStale(ctx, ctr, cfg.Runtime, cfg.Image)
 			switch {
 			case errors.Is(err, context.Canceled):
 				return nil
@@ -397,11 +405,18 @@ func run(cmd *cobra.Command, _ []string) error {
 // the lookup, the KPIL_SKIP_UPDATE_CHECK env var is set, or stdin isn't a
 // TTY (no way to prompt). Registry/inspect errors propagate so the caller
 // can surface a warning.
-func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bool, error) {
+func maybePullIfStale(ctx context.Context, ctr container.Client, runtime, img string) (bool, error) {
 	if skipUpdateCheck() {
 		return false, nil
 	}
-	local, err := ctr.LocalDigest(ctx, img)
+	// Bound the staleness probes so a hung registry or blackholing proxy
+	// can't wedge CLI startup indefinitely. The whole interactive prompt
+	// would never be reached if any of these calls blocks forever — the
+	// outer cobra context has no deadline of its own.
+	checkCtx, cancelCheck := context.WithTimeout(ctx, 10*time.Second)
+	defer cancelCheck()
+
+	local, err := ctr.LocalDigest(checkCtx, img)
 	if err != nil {
 		return false, fmt.Errorf("reading local digest: %w", err)
 	}
@@ -410,7 +425,7 @@ func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bo
 		// nothing meaningful to compare against, skip silently.
 		return false, nil
 	}
-	remote, err := ctr.RemoteDigest(ctx, img)
+	remote, err := ctr.RemoteDigest(checkCtx, img)
 	if err != nil {
 		return false, fmt.Errorf("reading remote digest: %w", err)
 	}
@@ -422,14 +437,14 @@ func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bo
 	// false-positive on every multi-arch tag. Treat the local image as
 	// up-to-date when its digest is the current arch's child of the remote
 	// index (or vice versa).
-	if container.SameImage(ctx, img, local, remote) {
+	if container.SameImage(checkCtx, img, local, remote) {
 		return false, nil
 	}
 
 	fmt.Printf("A newer version of %s is available in the registry.\n", img)
 	fmt.Printf("  local digest:  %s\n", local)
 	fmt.Printf("  remote digest: %s\n", remote)
-	printAgentVersionDiff(ctx, img, local, remote)
+	printAgentVersionDiff(ctx, runtime, img, local, remote)
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		fmt.Println("  Stdin is not a TTY — keeping the local image. Re-run with --pull to update.")
@@ -455,6 +470,18 @@ func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bo
 		return false, fmt.Errorf("pulling latest image: %w", err)
 	}
 	return true, nil
+}
+
+// needsLocalProbe reports whether at least one of the tracked agents lacks a
+// version after the registry lookup, in which case the container probe is
+// worth its ~1-2 s of latency.
+func needsLocalProbe(versions map[string]string) bool {
+	for _, agent := range []string{"claude", "opencode", "copilot"} {
+		if versions[agent] == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // skipUpdateCheck reports whether the startup staleness check should be
@@ -495,20 +522,19 @@ func readLineCtx(ctx context.Context, r io.Reader) (string, error) {
 // both the local and remote image (SBOM for claude/opencode, OCI label for
 // copilot) and prints a table when at least one side reports a version.
 // Failures are silent: the digest mismatch is already informative on its own.
-func printAgentVersionDiff(ctx context.Context, img, localDigest, remoteDigest string) {
+func printAgentVersionDiff(ctx context.Context, runtime, img, localDigest, remoteDigest string) {
 	// 20 s budget split across two registry lookups (each potentially fetching
 	// a multi-MB SBOM blob) plus an optional local-container probe.
 	vCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	// Local registry lookup, remote registry lookup, and the local-container
-	// fallback can all run concurrently — none depend on each other's
-	// results — so we never pay the cost of their sum on the wall clock.
+	// Local and remote registry lookups run in parallel — they don't depend
+	// on each other and they don't depend on the local-container probe.
 	var (
-		localVersions, remoteVersions, fallbackVersions map[string]string
-		wg                                              sync.WaitGroup
+		localVersions, remoteVersions map[string]string
+		wg                            sync.WaitGroup
 	)
-	wg.Add(3)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		localVersions = container.FetchAgentVersions(vCtx, img, localDigest)
@@ -517,20 +543,21 @@ func printAgentVersionDiff(ctx context.Context, img, localDigest, remoteDigest s
 		defer wg.Done()
 		remoteVersions = container.FetchAgentVersions(vCtx, img, remoteDigest)
 	}()
-	go func() {
-		defer wg.Done()
-		fallbackVersions = container.LocalAgentVersions(vCtx, img)
-	}()
 	wg.Wait()
 	if localVersions == nil {
 		localVersions = map[string]string{}
 	}
 
-	// Merge the local-container probe results, but only as fallback values:
-	// the registry-side SBOM/label is canonical when present.
-	for k, v := range fallbackVersions {
-		if localVersions[k] == "" {
-			localVersions[k] = v
+	// Only spin up a container to probe agent versions when the registry SBOM
+	// didn't surface them. On post-SBOM images the registry path returns
+	// everything we need and we skip a costly `<runtime> run --rm` (1-2 s on
+	// Apple Silicon emulating linux/amd64).
+	if needsLocalProbe(localVersions) {
+		fallback := container.LocalAgentVersions(vCtx, runtime, img)
+		for k, v := range fallback {
+			if localVersions[k] == "" {
+				localVersions[k] = v
+			}
 		}
 	}
 

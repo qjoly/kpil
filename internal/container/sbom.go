@@ -154,62 +154,19 @@ func fetchConfigLabels(ctx context.Context, registry, repo, digest, token string
 // fetchSBOMPackageVersions returns a map of npm-style package name → version
 // extracted from the SPDX SBOM attached to the image at digest.
 //
-// Buildx with `sbom: true` does not push the SBOM via the OCI Referrers API
-// (which GHCR doesn't fully support — it 303-redirects). Instead, buildx
-// embeds an "attestation-manifest" inside the image index, one per platform,
-// referencing back to the platform image via the
+// Buildx with `sbom: true` embeds an "attestation-manifest" inside the image
+// index, one per platform, referencing back to the platform image via the
 // `vnd.docker.reference.digest` annotation. Each attestation-manifest's
 // layers are in-toto statements; the SPDX SBOM lives in the layer whose
 // `in-toto.io/predicate-type` annotation is `https://spdx.dev/Document`,
 // with the SPDX document carried inline in the statement's `predicate`
-// field.
-//
-// We optimistically try the OCI Referrers API first (works on registries
-// that support it) and fall back to scanning the image index for the
-// attestation-manifest.
+// field. GHCR (kpil's default registry) does not implement the OCI
+// Referrers API in a way buildx uses, so we don't probe it here — if a
+// future target registry needs the Referrers path it should be added back
+// as a separate, tested branch rather than dead "tried but always empty"
+// boilerplate.
 func fetchSBOMPackageVersions(ctx context.Context, registry, repo, digest, token string) (map[string]string, error) {
-	if out := tryReferrerSBOM(ctx, registry, repo, digest, token); len(out) > 0 {
-		return out, nil
-	}
 	return fetchAttestationSBOM(ctx, registry, repo, digest, token)
-}
-
-// tryReferrerSBOM probes the OCI Referrers API. Returns nil silently when
-// the registry doesn't expose referrers or none are SBOMs.
-func tryReferrerSBOM(ctx context.Context, registry, repo, digest, token string) map[string]string {
-	descriptors, err := fetchReferrers(ctx, registry, repo, digest, token)
-	if err != nil || len(descriptors) == 0 {
-		return nil
-	}
-	out := map[string]string{}
-	for _, ref := range descriptors {
-		sbomManifest, _, err := fetchManifest(ctx, registry, repo, ref.Digest, token)
-		if err != nil {
-			continue
-		}
-		var mf struct {
-			ArtifactType string `json:"artifactType"`
-			Layers       []struct {
-				Digest    string `json:"digest"`
-				MediaType string `json:"mediaType"`
-			} `json:"layers"`
-		}
-		if err := json.Unmarshal(sbomManifest, &mf); err != nil {
-			continue
-		}
-		if !isSBOMArtifactType(ref.ArtifactType) && !isSBOMArtifactType(mf.ArtifactType) {
-			continue
-		}
-		for _, layer := range mf.Layers {
-			if !isSPDXMediaType(layer.MediaType) {
-				continue
-			}
-			if blob, err := fetchBlob(ctx, registry, repo, layer.Digest, token); err == nil {
-				extractSPDXVersions(blob, out)
-			}
-		}
-	}
-	return out
 }
 
 // fetchAttestationSBOM extracts the SPDX SBOM that buildx embeds inside the
@@ -294,42 +251,6 @@ func fetchAttestationSBOM(ctx context.Context, registry, repo, digest, token str
 	return out, nil
 }
 
-type referrerDescriptor struct {
-	Digest       string `json:"digest"`
-	MediaType    string `json:"mediaType"`
-	ArtifactType string `json:"artifactType"`
-}
-
-func fetchReferrers(ctx context.Context, registry, repo, digest, token string) ([]referrerDescriptor, error) {
-	url := fmt.Sprintf("https://%s/v2/%s/referrers/%s", registry, repo, digest)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/vnd.oci.image.index.v1+json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("referrers %s: %s", url, resp.Status)
-	}
-	var idx struct {
-		Manifests []referrerDescriptor `json:"manifests"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&idx); err != nil {
-		return nil, fmt.Errorf("parsing referrers: %w", err)
-	}
-	return idx.Manifests, nil
-}
-
 func fetchManifest(ctx context.Context, registry, repo, ref, token string) ([]byte, string, error) {
 	url := fmt.Sprintf("https://%s/v2/%s/manifests/%s", registry, repo, ref)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -404,15 +325,4 @@ func isIndexMediaType(mt string) bool {
 	mt = strings.SplitN(mt, ";", 2)[0]
 	return mt == "application/vnd.oci.image.index.v1+json" ||
 		mt == "application/vnd.docker.distribution.manifest.list.v2+json"
-}
-
-func isSBOMArtifactType(mt string) bool {
-	mt = strings.SplitN(mt, ";", 2)[0]
-	return strings.Contains(mt, "spdx") || strings.Contains(mt, "cyclonedx") ||
-		mt == "application/vnd.in-toto+json"
-}
-
-func isSPDXMediaType(mt string) bool {
-	mt = strings.SplitN(mt, ";", 2)[0]
-	return strings.Contains(mt, "spdx") || mt == "application/json"
 }

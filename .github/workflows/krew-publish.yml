@@ -20,8 +20,22 @@ jobs:
     name: Update krew-index for ${{ inputs.tag }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # Checkout at the tag's commit so the bot's "release exists at this
+      # commit" check succeeds.
+      - name: Checkout @ ${{ inputs.tag }}
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      # The .krew.yaml template may not exist at the tag's commit (e.g. when
+      # back-publishing a release cut before the template was added). Pull
+      # it forward from main so the bot has something to render.
+      - name: Bring .krew.yaml forward from main
+        run: |
+          git fetch --no-tags origin main
+          git checkout origin/main -- .krew.yaml
+          test -f .krew.yaml
 
       - name: Update plugin in krew-index
         uses: rajatjindal/krew-release-bot@v0.0.51

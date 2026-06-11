@@ -33,6 +33,20 @@ brew install kpil
 kubectl krew install --manifest-url=https://raw.githubusercontent.com/qjoly/kpil/main/kpil.yaml
 ```
 
+### Mise
+
+[Mise](https://mise.jdx.dev/) can pin and install kpil directly from GitHub release assets via the `ubi` backend (no separate plugin required):
+
+```sh
+# Install the latest release
+mise use -g ubi:qjoly/kpil
+
+# Or pin a specific version
+mise use -g ubi:qjoly/kpil@0.1.1
+```
+
+Then run `kpil` like any other tool — mise resolves the right binary for your platform (`darwin/linux × amd64/arm64`) from the GitHub release.
+
 ### Pre-built binary
 
 Download from the [Releases page](https://github.com/qjoly/kpil/releases) and place the binary in your `PATH`.

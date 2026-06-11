@@ -48,8 +48,8 @@ layout: hextra-home
     icon="cube"
   >}}
   {{< hextra/feature-card
-    title="Homebrew & Krew"
-    subtitle="Install via brew tap or kubectl krew. Pre-built binaries for all major platforms."
+    title="Homebrew, Krew & Mise"
+    subtitle="Install via brew tap, kubectl krew, or mise (ubi backend). Pre-built binaries for all major platforms."
     icon="download"
   >}}
   {{< hextra/feature-card

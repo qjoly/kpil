@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -413,7 +414,15 @@ func maybePullIfStale(ctx context.Context, ctr container.Client, img string) (bo
 	if err != nil {
 		return false, fmt.Errorf("reading remote digest: %w", err)
 	}
-	if remote == "" || remote == local {
+	if remote == "" {
+		return false, nil
+	}
+	// Podman stores the per-platform manifest digest in RepoDigests while the
+	// registry returns the index digest for a tag — strict equality would
+	// false-positive on every multi-arch tag. Treat the local image as
+	// up-to-date when its digest is the current arch's child of the remote
+	// index (or vice versa).
+	if container.SameImage(ctx, img, local, remote) {
 		return false, nil
 	}
 
@@ -487,26 +496,41 @@ func readLineCtx(ctx context.Context, r io.Reader) (string, error) {
 // copilot) and prints a table when at least one side reports a version.
 // Failures are silent: the digest mismatch is already informative on its own.
 func printAgentVersionDiff(ctx context.Context, img, localDigest, remoteDigest string) {
-	vCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	// 20 s budget split across two registry lookups (each potentially fetching
+	// a multi-MB SBOM blob) plus an optional local-container probe.
+	vCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	localVersions := container.FetchAgentVersions(vCtx, img, localDigest)
-	remoteVersions := container.FetchAgentVersions(vCtx, img, remoteDigest)
+	// Local registry lookup, remote registry lookup, and the local-container
+	// fallback can all run concurrently — none depend on each other's
+	// results — so we never pay the cost of their sum on the wall clock.
+	var (
+		localVersions, remoteVersions, fallbackVersions map[string]string
+		wg                                              sync.WaitGroup
+	)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		localVersions = container.FetchAgentVersions(vCtx, img, localDigest)
+	}()
+	go func() {
+		defer wg.Done()
+		remoteVersions = container.FetchAgentVersions(vCtx, img, remoteDigest)
+	}()
+	go func() {
+		defer wg.Done()
+		fallbackVersions = container.LocalAgentVersions(vCtx, img)
+	}()
+	wg.Wait()
+	if localVersions == nil {
+		localVersions = map[string]string{}
+	}
 
-	// Older locally-stored images may predate kpil's SBOM-enabled CI, so the
-	// registry lookup returns no SBOM for them. Fall back to running the
-	// image briefly and parsing each agent's --version output so the user
-	// sees a useful "before" column even on pre-SBOM images.
-	if localVersions["claude"] == "" || localVersions["opencode"] == "" || localVersions["copilot"] == "" {
-		if extra := container.LocalAgentVersions(vCtx, img); extra != nil {
-			if localVersions == nil {
-				localVersions = map[string]string{}
-			}
-			for k, v := range extra {
-				if localVersions[k] == "" {
-					localVersions[k] = v
-				}
-			}
+	// Merge the local-container probe results, but only as fallback values:
+	// the registry-side SBOM/label is canonical when present.
+	for k, v := range fallbackVersions {
+		if localVersions[k] == "" {
+			localVersions[k] = v
 		}
 	}
 

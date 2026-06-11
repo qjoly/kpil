@@ -108,6 +108,55 @@ func parseImageRef(img string) (registry, repo, ref string) {
 	return first, parts[1], ref
 }
 
+// SameImage reports whether local and remote refer to the same OCI image
+// content even when one is an image index and the other is one of its
+// per-platform child manifests.
+//
+// This handles podman's habit of storing the platform-specific manifest
+// digest in RepoDigests (so LocalDigest returns e.g. the arm64 child) while
+// `manifest inspect` on a tag returns the parent index digest — making a
+// plain `local == remote` comparison miss a no-op pull.
+func SameImage(ctx context.Context, img, local, remote string) bool {
+	if local == remote || local == "" || remote == "" {
+		return local == remote
+	}
+	registry, repo, _ := parseImageRef(img)
+	token, _ := authForRepo(ctx, registry, repo)
+
+	if isChildOfIndex(ctx, registry, repo, remote, local, token) {
+		return true
+	}
+	return isChildOfIndex(ctx, registry, repo, local, remote, token)
+}
+
+// isChildOfIndex returns true when parent identifies an OCI image index whose
+// manifests array references child. Attestation-manifest descriptors are
+// skipped — only real image manifests count as platform children.
+func isChildOfIndex(ctx context.Context, registry, repo, parent, child, token string) bool {
+	body, mediaType, err := fetchManifest(ctx, registry, repo, parent, token)
+	if err != nil || !isIndexMediaType(mediaType) {
+		return false
+	}
+	var idx struct {
+		Manifests []struct {
+			Digest      string            `json:"digest"`
+			Annotations map[string]string `json:"annotations"`
+		} `json:"manifests"`
+	}
+	if err := json.Unmarshal(body, &idx); err != nil {
+		return false
+	}
+	for _, m := range idx.Manifests {
+		if m.Annotations["vnd.docker.reference.type"] != "" {
+			continue // skip attestation-manifests
+		}
+		if m.Digest == child {
+			return true
+		}
+	}
+	return false
+}
+
 func fetchBearerToken(ctx context.Context, authHeader, repo string) (string, error) {
 	if !strings.HasPrefix(authHeader, "Bearer ") {
 		return "", fmt.Errorf("unsupported auth scheme: %q", authHeader)
